@@ -25,7 +25,7 @@ pub struct Registers {
 
 impl Registers {
     pub fn init() -> Registers {
-        let this = Registers {
+        Registers {
             a:0x01,
             b:0x00,
             c:0x13,
@@ -36,31 +36,31 @@ impl Registers {
             l:0x4D,
             sp:0xFFFE,
             pc:0x0100
-        };
-        return this;
+        }
     }
 
-    pub fn concat_registers(most:&u8, least:&u8) -> u16 {
-        return ((*most as u16) << 8) | *least as u16;
+    pub fn concat_registers(most:u8, least:u8) -> u16 {
+        ((most as u16) << 8) | least as u16
+        
     }
 
     pub fn dec_8bit(reg:u8) -> u8 {
-        return reg - 1;
+        reg - 1
     }
 
     pub fn dec_16bit(reg:u16) -> u16 {
-        return reg - 1;
+        reg - 1
     }
 
     pub fn get_upper_byte(word:u16) -> u8 {
-        return (word >> 8) as u8;
+        (word >> 8) as u8
     }
 
     pub fn inc_8bit(reg:u8) -> u8 {
-        return reg + 1;
+        reg + 1
     }
 
     pub fn inc_16bit(reg:u16) -> u16 {
-        return reg + 1;
+        reg + 1
     }
 }
