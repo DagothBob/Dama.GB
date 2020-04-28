@@ -1,5 +1,6 @@
 [package]
 name = "dama-gb"
 version = "0.0.1"
+edition = "2018"
 readme = "README.md"
 repository = "https://github.com/DagothBob/Dama.GB"
