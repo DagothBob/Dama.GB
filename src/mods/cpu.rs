@@ -16,6 +16,11 @@ pub enum JumpCondition {
     Carry
 }
 
+pub const FLAG_ZERO:u8 = 0b1000_0000;
+pub const FLAG_SUBT:u8 = 0b0100_0000;
+pub const FLAG_HALF:u8 = 0b0010_0000;
+pub const FLAG_CARR:u8 = 0b0001_0000;
+
 impl CPU {
     // Constructor
     pub fn init() -> CPU {
@@ -31,8 +36,34 @@ impl CPU {
     }
 
     // Decrement 16 bit value
+    // Endian-swapped, so upper byte it decremented
     pub fn dec_16bit(reg:u16) -> u16 {
-        reg - 1
+        CPU::swap_endian(reg) - 1
+    }
+
+    // Decrement combined 8 bit registers as a 16 bit one
+    // Endian-swapped, so upper byte is decremented
+    pub fn dec_16bits(&mut self, reg:RegistersEnum) {
+        match reg {
+            RegistersEnum::bc => {
+                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.b, self.registers.c)) - 1;
+                self.registers.b = (concat >> 8) as u8;
+                self.registers.c = concat as u8
+            },
+            RegistersEnum::de => {
+                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.d, self.registers.e)) - 1;
+                self.registers.d = (concat >> 8) as u8;
+                self.registers.e = concat as u8
+            },
+            RegistersEnum::hl => {
+                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.h, self.registers.l)) - 1;
+                self.registers.h = (concat >> 8) as u8;
+                self.registers.l = concat as u8
+            }
+            _ => {
+                panic!("Invalid registers enum passed to dec_16bits")
+            }
+        }
     }
 
     // Return most significant byte of word
@@ -46,8 +77,34 @@ impl CPU {
     }
 
     // Increment 16 bit value
+    // Endian-swapped, so upper byte is incremented
     pub fn inc_16bit(reg:u16) -> u16 {
-        reg + 1
+        CPU::swap_endian(reg) + 1
+    }
+
+    // Increment combined 8 bit registers as a 16 bit one
+    // Endian-swapped, so upper byte is incremented
+    pub fn inc_16bits(&mut self, reg:RegistersEnum) {
+        match reg {
+            RegistersEnum::bc => {
+                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.b, self.registers.c)) + 1;
+                self.registers.b = (concat >> 8) as u8;
+                self.registers.c = concat as u8
+            },
+            RegistersEnum::de => {
+                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.d, self.registers.e)) + 1;
+                self.registers.d = (concat >> 8) as u8;
+                self.registers.e = concat as u8
+            },
+            RegistersEnum::hl => {
+                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.h, self.registers.l)) + 1;
+                self.registers.h = (concat >> 8) as u8;
+                self.registers.l = concat as u8
+            }
+            _ => {
+                panic!("Invalid registers enum passed to inc_16bits")
+            }
+        }
     }
 
     // Swap endianness of 16 bit word
@@ -64,7 +121,7 @@ impl CPU {
                 CPU::op_nop()
             },
             0x01 => { // LD BC,d16
-                self.op_load_16bits(RegisterPairs::bc, arg)
+                self.op_load_16bits(RegistersEnum::bc, CPU::swap_endian(arg))
             },
             0x02 => { // LD (BC),A
                 self.mem.set_memory(Registers::concat_registers(self.registers.c, self.registers.b) as usize, self.registers.a)
@@ -81,7 +138,7 @@ impl CPU {
             0x07 => { // RLCA
             },
             0x08 => { // LD (a16),SP
-                self.registers.sp = CPU::op_load_16bit(arg)
+                self.registers.sp = CPU::op_load_16bit(CPU::swap_endian(arg))
             },
             0x09 => { // ADD HL,BC
             },
@@ -102,9 +159,10 @@ impl CPU {
             0x10 => { // STOP
             },
             0x11 => { // LD DE,d16
-                self.op_load_16bits(RegisterPairs::de, arg)
+                self.op_load_16bits(RegistersEnum::de, CPU::swap_endian(arg))
             },
             0x12 => { // LD (DE),A
+                self.mem.set_memory(Registers::concat_registers(self.registers.e, self.registers.d) as usize, self.registers.a)
             },
             0x13 => { // INC DE
             },
@@ -122,6 +180,7 @@ impl CPU {
             0x19 => { // ADD HL,DE
             },
             0x1A => { // LD A,(DE)
+                self.registers.a = self.mem.get_byte(Registers::concat_registers(self.registers.e, self.registers.d) as usize)
             },
             0x1B => { // DEC DE
             },
@@ -137,9 +196,11 @@ impl CPU {
             0x20 => { // JR NZ,r8
             },
             0x21 => { // LD HL,d16
-                self.op_load_16bits(RegisterPairs::hl, arg)
+                self.op_load_16bits(RegistersEnum::hl, CPU::swap_endian(arg))
             },
             0x22 => { // LD (HL+),A
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.a);
+                self.inc_16bits(RegistersEnum::hl)
             },
             0x23 => { // INC HL
             },
@@ -157,6 +218,8 @@ impl CPU {
             0x29 => { // ADD HL,HL
             },
             0x2A => { // LD A,(HL+)
+                self.registers.a = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.inc_16bits(RegistersEnum::hl)
             },
             0x2B => { // DEC HL
             },
@@ -175,6 +238,8 @@ impl CPU {
                 self.registers.sp = CPU::op_load_16bit(arg)
             },
             0x32 => { // LD (HL-),A
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.a);
+                self.dec_16bits(RegistersEnum::hl)
             },
             0x33 => { // INC SP
             },
@@ -192,6 +257,8 @@ impl CPU {
             0x39 => { // ADD HL,SP
             },
             0x3A => { // LD A,(HL-)
+                self.registers.a = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.dec_16bits(RegistersEnum::hl)
             },
             0x3B => { // DEC SP
             },
@@ -526,6 +593,8 @@ impl CPU {
             0xC0 => { // RET NZ
             },
             0xC1 => { // POP BC
+                self.registers.c = self.op_pop();
+                self.registers.b = self.op_pop();
             },
             0xC2 => { // JP NZ,a16
             },
@@ -534,6 +603,8 @@ impl CPU {
             0xC4 => { // CALL NZ,a16
             },
             0xC5 => { // PUSH BC
+                self.op_push(self.registers.b);
+                self.op_push(self.registers.c);
             },
             0xC6 => { // ADD A,d8
             },
@@ -558,12 +629,16 @@ impl CPU {
             0xD0 => { // RET NC
             },
             0xD1 => { // POP DE
+                self.registers.e = self.op_pop();
+                self.registers.d = self.op_pop();
             },
             0xD2 => { // JP NC,a16
             },
             0xD4 => { // CALL NC,a16
             },
             0xD5 => { // PUSH DE
+                self.op_push(self.registers.d);
+                self.op_push(self.registers.e);
             },
             0xD6 => { // SUB d8
             },
@@ -582,12 +657,18 @@ impl CPU {
             0xDF => { // RST 1 8H
             }
             0xE0 => { // LDH (a8),A
+                self.mem.set_memory((0xFF00 + (arg as u8) as u16) as usize, self.registers.a)
             },
             0xE1 => { // POP HL
+                self.registers.l = self.op_pop();
+                self.registers.h = self.op_pop();
             },
             0xE2 => { // LD (C),A
+                self.mem.set_memory(((0xFF00 as u16) + self.registers.c as u16) as usize, self.registers.a)
             },
             0xE5 => { // PUSH HL
+                self.op_push(self.registers.h);
+                self.op_push(self.registers.l);
             },
             0xE6 => { // AND d8
             },
@@ -598,30 +679,59 @@ impl CPU {
             0xE9 => { // JP (HL)
             },
             0xEA => { // LD (a16),A
+                self.mem.set_memory(CPU::swap_endian(arg) as usize, self.registers.a)
             },
             0xEE => { // XOR d8
             },
             0xEF => { // RST 2 8H
             },
             0xF0 => { // LDH A,(a8)
+                self.registers.a = CPU::op_load_8bit(self.mem.get_byte((0xFF00 + (arg as u8) as u16) as usize))
             },
             0xF1 => { // POP AF
+                self.registers.f = self.op_pop();
+                self.registers.a = self.op_pop();
             },
             0xF2 => { // LD A,(C)
+                self.registers.a = CPU::op_load_8bit(self.mem.get_byte((0xFF00 + (self.registers.c) as u16) as usize))
             },
             0xF3 => { // DI
             },
             0xF5 => { // PUSH AF
+                self.op_push(self.registers.a);
+                self.op_push(self.registers.f);
             },
             0xF6 => { // OR d8
             },
             0xF7 => { // RST 30H
             },
             0xF8 => { // LD HL,SP+r8
+                let sp_new = self.registers.sp + arg;
+                let old_l = self.registers.l;
+
+                self.op_load_16bits(RegistersEnum::hl, sp_new);
+
+                self.registers.f &= !FLAG_ZERO | !FLAG_SUBT;
+
+                if sp_new < arg {
+                    self.registers.f |= FLAG_CARR;
+                }
+                else {
+                    self.registers.f &= !FLAG_CARR;
+                }
+
+                if old_l > self.registers.l {
+                    self.registers.f |= FLAG_HALF;
+                }
+                else {
+                    self.registers.f &= !FLAG_HALF;
+                }
             },
             0xF9 => { // LD SP,HL
+                self.registers.sp = Registers::concat_registers(self.registers.h, self.registers.l)
             },
             0xFA => { // LD A,(a16)
+                self.registers.a = self.mem.get_byte(CPU::swap_endian(arg) as usize)
             },
             0xFB => { // EI
             },
@@ -648,33 +758,63 @@ impl CPU {
         from
     }
 
-    pub fn op_load_16bits(&mut self, to:RegisterPairs, from:u16) {
+    pub fn op_load_16bits(&mut self, to:RegistersEnum, from:u16) {
         match to {
-            RegisterPairs::bc => {
+            RegistersEnum::bc => {
                 self.registers.b = CPU::get_upper_byte(from);
                 self.registers.c = from as u8
             }
-            RegisterPairs::de => {
+            RegistersEnum::de => {
                 self.registers.d = CPU::get_upper_byte(from);
                 self.registers.e = from as u8
             }
-            RegisterPairs::hl => {
+            RegistersEnum::hl => {
                 self.registers.h = CPU::get_upper_byte(from);
                 self.registers.l = from as u8
+            }
+            _ => {
+                panic!("Invalid pass of register enum to op_load_16bits")
             }
         }
     }
 
-    pub fn op_push(&self, val:u16) {
-        // TODO
+    pub fn op_push(&mut self, val:u8) {
+        self.registers.sp = CPU::dec_16bit(self.registers.sp);
+        self.mem.set_memory(CPU::swap_endian(self.registers.sp) as usize, val);
     }
 
-    pub fn op_pop(&self) -> u16 {
-        1 // TODO
+    pub fn op_pop(&mut self) -> u8 {
+        let ret = self.mem.get_byte(CPU::swap_endian(self.registers.sp) as usize);
+        self.registers.sp = CPU::dec_16bit(self.registers.sp);
+        ret
     }
 
-    pub fn op_add_8bit(&self, val:u8) {
-        // TODO
+    pub fn op_add_8bit(&mut self, val:u8) {
+        let old_a = self.registers.a;
+        self.registers.a += self.registers.b;
+
+        if self.registers.a == 0 {
+            self.registers.f |= FLAG_ZERO;
+        }
+        else {
+            self.registers.f &= !FLAG_ZERO;
+        }
+
+        self.registers.f &= !FLAG_SUBT;
+
+        if old_a > self.registers.a {
+            self.registers.f |= FLAG_CARR;
+        }
+        else {
+            self.registers.f &= !FLAG_CARR;
+        }
+
+        if (((old_a & 0xF) + (self.registers.b & 0xF)) & 0x10) > 0 {
+            self.registers.f |= FLAG_HALF;
+        }
+        else {
+            self.registers.f &= !FLAG_HALF;
+        }
     }
 
     pub fn op_sub_8bit(&self, val:u8) {
@@ -705,8 +845,43 @@ impl CPU {
         // TODO
     }
 
-    pub fn op_add_16bit(&self, val:u16) {
-        // TODO
+    pub fn op_add_16bit(&mut self, reg:RegistersEnum, val:u16) {
+        let old_reg:u16;
+        let mod_reg:u16;
+
+        match reg {
+            RegistersEnum::hl => {
+                old_reg = Registers::concat_registers(self.registers.h, self.registers.l);
+                self.registers.h = (val >> 8) as u8;
+                self.registers.l = val as u8;
+                mod_reg = Registers::concat_registers(self.registers.h, self.registers.l);
+            }
+            RegistersEnum::sp => {
+                old_reg = self.registers.sp;
+                self.registers.sp = val;
+                mod_reg = self.registers.sp;
+                self.registers.f &= !FLAG_ZERO;
+            }
+            _ => {
+                panic!("Invalid registers enum passed to op_add_16bit");
+            }
+        }
+
+        self.registers.f &= !FLAG_SUBT;
+
+        if old_reg > mod_reg {
+            self.registers.f |= FLAG_CARR;
+        }
+        else {
+            self.registers.f &= !FLAG_CARR;
+        }
+
+        if (mod_reg as u8) < (old_reg as u8) {
+            self.registers.f |= FLAG_HALF;
+        }
+        else {
+            self.registers.f &= !FLAG_HALF;
+        }
     }
 
     pub fn op_increment_16bit(&self) {
@@ -854,7 +1029,17 @@ pub struct Registers {
     pc:u16
 }
 
-pub enum RegisterPairs {
+pub enum RegistersEnum {
+    a,
+    b,
+    c,
+    d,
+    e,
+    f,
+    h,
+    l,
+    sp,
+    pc,
     bc,
     de,
     hl
