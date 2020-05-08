@@ -121,7 +121,7 @@ impl CPU {
                 CPU::op_nop()
             },
             0x01 => { // LD BC,d16
-                self.op_load_16bits(RegistersEnum::bc, CPU::swap_endian(arg))
+                self.op_load_16bits(RegistersEnum::bc, arg)
             },
             0x02 => { // LD (BC),A
                 self.mem.set_memory(Registers::concat_registers(self.registers.c, self.registers.b) as usize, self.registers.a)
@@ -142,13 +142,14 @@ impl CPU {
                 self.registers.a = self.op_rotate_left_carry(self.registers.a, 1)
             },
             0x08 => { // LD (a16),SP
-                self.registers.sp = CPU::op_load_16bit(CPU::swap_endian(arg))
+                self.mem.set_memory(CPU::swap_endian(arg) as usize, self.registers.sp as u8);
+                self.mem.set_memory((CPU::swap_endian(arg) + 1) as usize, CPU::get_upper_byte(self.registers.sp))
             },
             0x09 => { // ADD HL,BC
                 self.op_add_16bit(RegistersEnum::hl, Registers::concat_registers(self.registers.b, self.registers.c))
             },
             0x0A => { // LD A,(BC)
-                self.registers.a = self.mem.get_byte(Registers::concat_registers(self.registers.c, self.registers.b) as usize)
+                self.registers.a = CPU::op_load_8bit(self.mem.get_byte(Registers::concat_registers(self.registers.c, self.registers.b) as usize))
             },
             0x0B => { // DEC BC
                 self.op_decrement_16bit(RegistersEnum::bc)
@@ -169,7 +170,7 @@ impl CPU {
                 self.op_stop()
             },
             0x11 => { // LD DE,d16
-                self.op_load_16bits(RegistersEnum::de, CPU::swap_endian(arg))
+                self.op_load_16bits(RegistersEnum::de, arg)
             },
             0x12 => { // LD (DE),A
                 self.mem.set_memory(Registers::concat_registers(self.registers.e, self.registers.d) as usize, self.registers.a)
@@ -217,7 +218,7 @@ impl CPU {
                 self.op_jump_if_add(arg as u8, JumpCondition::NotZero)
             },
             0x21 => { // LD HL,d16
-                self.op_load_16bits(RegistersEnum::hl, CPU::swap_endian(arg))
+                self.op_load_16bits(RegistersEnum::hl, arg)
             },
             0x22 => { // LD (HL+),A
                 self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.a);
@@ -297,17 +298,17 @@ impl CPU {
                 self.op_add_16bit(RegistersEnum::hl, self.registers.sp)
             },
             0x3A => { // LD A,(HL-)
-                self.registers.a = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.registers.a = CPU::op_load_8bit(self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize));
                 self.dec_16bits(RegistersEnum::hl)
             },
             0x3B => { // DEC SP
                 self.op_decrement_16bit(RegistersEnum::sp)
             },
             0x3C => { // INC A
-                self.registers.a = CPU::inc_8bit(self.registers.a)
+                self.registers.a = self.op_increment_8bit(self.registers.a)
             },
             0x3D => { // DEC A
-                self.registers.a = CPU::dec_8bit(self.registers.a)
+                self.registers.a = self.op_decrement_8bit(self.registers.a)
             },
             0x3E => { // LD A,d8
                 self.registers.a = CPU::op_load_8bit(arg as u8)
@@ -715,10 +716,10 @@ impl CPU {
                 self.registers.b = self.op_pop();
             },
             0xC2 => { // JP NZ,a16
-                self.op_jump_if(CPU::swap_endian(arg), JumpCondition::NotZero)
+                self.op_jump_if(arg, JumpCondition::NotZero)
             },
             0xC3 => { // JP a16
-                self.op_jump(CPU::swap_endian(arg))
+                self.op_jump(arg)
             },
             0xC4 => { // CALL NZ,a16
                 self.op_call_if(JumpCondition::NotZero)
@@ -901,7 +902,817 @@ impl CPU {
 
     // opcode = opcode in CB table, arg = literal value
     pub fn op_match_cb(&mut self, opcode:u8, arg:u16) {
-        // TODO
+        match opcode {
+            0x00 => { // RLC B
+                self.registers.b = self.op_rotate_left_carry(self.registers.b, arg as u8)
+            },
+            0x01 => { // RLC C
+                self.registers.c = self.op_rotate_left_carry(self.registers.c, arg as u8)
+            },
+            0x02 => { // RLC D
+                self.registers.d = self.op_rotate_left_carry(self.registers.d, arg as u8)
+            },
+            0x03 => { // RLC E
+                self.registers.e = self.op_rotate_left_carry(self.registers.e, arg as u8)
+            },
+            0x04 => { // RLC H
+                self.registers.h = self.op_rotate_left_carry(self.registers.h, arg as u8)
+            },
+            0x05 => { // RLC L
+                self.registers.l = self.op_rotate_left_carry(self.registers.l, arg as u8)
+            },
+            0x06 => { // RLC (HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let val = self.op_rotate_left_carry(get, arg as u8);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
+            },
+            0x07 => { // RLC A
+                self.registers.a = self.op_rotate_left_carry(self.registers.a, arg as u8)
+            },
+            0x08 => { // RRC B
+                self.registers.b = self.op_rotate_right_carry(self.registers.b, arg as u8)
+            },
+            0x09 => { // RRC C
+                self.registers.c = self.op_rotate_right_carry(self.registers.c, arg as u8)
+            },
+            0x0A => { // RRC D
+                self.registers.d = self.op_rotate_right_carry(self.registers.d, arg as u8)
+            },
+            0x0B => { // RRC E
+                self.registers.e = self.op_rotate_right_carry(self.registers.e, arg as u8)
+            },
+            0x0C => { // RRC H
+                self.registers.h = self.op_rotate_right_carry(self.registers.h, arg as u8)
+            },
+            0x0D => { // RRC L
+                self.registers.l = self.op_rotate_right_carry(self.registers.l, arg as u8)
+            },
+            0x0E => { // RRC (HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let val = self.op_rotate_right_carry(get, arg as u8);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
+            },
+            0x0F => { // RRC A
+                self.registers.a = self.op_rotate_right_carry(self.registers.a, arg as u8)
+            },
+            0x10 => { // RL B
+                self.registers.b = self.op_rotate_left(self.registers.b, arg as u8)
+            },
+            0x11 => { // RL C
+                self.registers.c = self.op_rotate_left(self.registers.c, arg as u8)
+            },
+            0x12 => { // RL D
+                self.registers.d = self.op_rotate_left(self.registers.d, arg as u8)
+            },
+            0x13 => { // RL E
+                self.registers.e = self.op_rotate_left(self.registers.e, arg as u8)
+            },
+            0x14 => { // RL H
+                self.registers.h = self.op_rotate_left(self.registers.h, arg as u8)
+            },
+            0x15 => { // RL L
+                self.registers.l = self.op_rotate_left(self.registers.l, arg as u8)
+            },
+            0x16 => { // RL (HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let val = self.op_rotate_left(get, arg as u8);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
+            },
+            0x17 => { // RL A
+                self.registers.a = self.op_rotate_left(self.registers.a, arg as u8)
+            },
+            0x18 => { // RR B
+                self.registers.b = self.op_rotate_right(self.registers.b, arg as u8)
+            },
+            0x19 => { // RR C
+                self.registers.c = self.op_rotate_right(self.registers.c, arg as u8)
+            },
+            0x1A => { // RR D
+                self.registers.d = self.op_rotate_right(self.registers.d, arg as u8)
+            },
+            0x1B => { // RR E
+                self.registers.e = self.op_rotate_right(self.registers.e, arg as u8)
+            },
+            0x1C => { // RR H
+                self.registers.h = self.op_rotate_right(self.registers.h, arg as u8)
+            },
+            0x1D => { // RR L
+                self.registers.l = self.op_rotate_right(self.registers.l, arg as u8)
+            },
+            0x1E => { // RR (HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let val = self.op_rotate_right(get, arg as u8);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
+            },
+            0x1F => { // RR A
+                self.registers.a = self.op_rotate_right(self.registers.a, arg as u8)
+            },
+            0x20 => { // SLA B
+                self.registers.b = self.op_shift_left_carry(self.registers.b, arg as u8)
+            },
+            0x21 => { // SLA C
+                self.registers.c = self.op_shift_left_carry(self.registers.c, arg as u8)
+            },
+            0x22 => { // SLA D
+                self.registers.d = self.op_shift_left_carry(self.registers.d, arg as u8)
+            },
+            0x23 => { // SLA E
+                self.registers.e = self.op_shift_left_carry(self.registers.e, arg as u8)
+            },
+            0x24 => { // SLA H
+                self.registers.h = self.op_shift_left_carry(self.registers.h, arg as u8)
+            },
+            0x25 => { // SLA L
+                self.registers.l = self.op_shift_left_carry(self.registers.l, arg as u8)
+            },
+            0x26 => { // SLA (HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let val = self.op_shift_left_carry(get, arg as u8);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
+            },
+            0x27 => { // SLA A
+                self.registers.a = self.op_shift_left_carry(self.registers.a, arg as u8)
+            },
+            0x28 => { // SRA B
+                self.registers.b = self.op_shift_righta_carry(self.registers.b, arg as u8)
+            },
+            0x29 => { // SRA C
+                self.registers.c = self.op_shift_righta_carry(self.registers.c, arg as u8)
+            },
+            0x2A => { // SRA D
+                self.registers.d = self.op_shift_righta_carry(self.registers.d, arg as u8)
+            },
+            0x2B => { // SRA E
+                self.registers.e = self.op_shift_righta_carry(self.registers.e, arg as u8)
+            },
+            0x2C => { // SRA H
+                self.registers.h = self.op_shift_righta_carry(self.registers.h, arg as u8)
+            },
+            0x2D => { // SRA L
+                self.registers.l = self.op_shift_righta_carry(self.registers.l, arg as u8)
+            },
+            0x2E => { // SRA (HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let val = self.op_shift_righta_carry(get, arg as u8);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
+            },
+            0x2F => { // SRA A
+                self.registers.a = self.op_shift_righta_carry(self.registers.a, arg as u8)
+            },
+            0x30 => { // SWAP B
+                
+            },
+            0x31 => { // SWAP C
+                
+            },
+            0x32 => { // SWAP D
+                
+            },
+            0x33 => { // SWAP E
+                
+            },
+            0x34 => { // SWAP H
+                
+            },
+            0x35 => { // SWAP L
+                
+            },
+            0x36 => { // SWAP (HL)
+                
+            },
+            0x37 => { // SWAP A
+                
+            },
+            0x38 => { // SRL B
+                self.registers.b = self.op_shift_rightl_carry(self.registers.b, arg as u8)
+            },
+            0x39 => { // SRL C
+                self.registers.c = self.op_shift_rightl_carry(self.registers.c, arg as u8)
+            },
+            0x3A => { // SRL D
+                self.registers.d = self.op_shift_rightl_carry(self.registers.d, arg as u8)
+            },
+            0x3B => { // SRL E
+                self.registers.e = self.op_shift_rightl_carry(self.registers.e, arg as u8)
+            },
+            0x3C => { // SRL H
+                self.registers.h = self.op_shift_rightl_carry(self.registers.h, arg as u8)
+            },
+            0x3D => { // SRL L
+                self.registers.l = self.op_shift_rightl_carry(self.registers.l, arg as u8)
+            },
+            0x3E => { // SRL (HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let val = self.op_shift_rightl_carry(get, arg as u8);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
+            },
+            0x3F => { // SRL A
+                self.registers.a = self.op_shift_rightl_carry(self.registers.a, arg as u8)
+            },
+            0x40 => { // BIT 0,B
+                self.op_test_bit(self.registers.b, 0)
+            },
+            0x41 => { // BIT 0,C
+                self.op_test_bit(self.registers.c, 0)
+            },
+            0x42 => { // BIT 0,D
+                self.op_test_bit(self.registers.d, 0)
+            },
+            0x43 => { // BIT 0,E
+                self.op_test_bit(self.registers.e, 0)
+            },
+            0x44 => { // BIT 0,H
+                self.op_test_bit(self.registers.h, 0)
+            },
+            0x45 => { // BIT 0,L
+                self.op_test_bit(self.registers.l, 0)
+            },
+            0x46 => { // BIT 0,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.op_test_bit(get, 0)
+            },
+            0x47 => { // BIT 0,A
+                self.op_test_bit(self.registers.a, 0)
+            },
+            0x48 => { // BIT 1,B
+                self.op_test_bit(self.registers.b, 1)
+            },
+            0x49 => { // BIT 1,C
+                self.op_test_bit(self.registers.c, 1)
+            },
+            0x4A => { // BIT 1,D
+                self.op_test_bit(self.registers.d, 1)
+            },
+            0x4B => { // BIT 1,E
+                self.op_test_bit(self.registers.e, 1)
+            },
+            0x4C => { // BIT 1,H
+                self.op_test_bit(self.registers.h, 1)
+            },
+            0x4D => { // BIT 1,L
+                self.op_test_bit(self.registers.l, 1)
+            },
+            0x4E => { // BIT 1,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.op_test_bit(get, 1)
+            },
+            0x4F => { // BIT 1,A
+                self.op_test_bit(self.registers.a, 1)
+            },
+            0x50 => { // BIT 2,B
+                self.op_test_bit(self.registers.b, 2)
+            },
+            0x51 => { // BIT 2,C
+                self.op_test_bit(self.registers.c, 2)
+            },
+            0x52 => { // BIT 2,D
+                self.op_test_bit(self.registers.d, 2)
+            },
+            0x53 => { // BIT 2,E
+                self.op_test_bit(self.registers.e, 2)
+            },
+            0x54 => { // BIT 2,H
+                self.op_test_bit(self.registers.h, 2)
+            },
+            0x55 => { // BIT 2,L
+                self.op_test_bit(self.registers.l, 2)
+            },
+            0x56 => { // BIT 2,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.op_test_bit(get, 2)
+            },
+            0x57 => { // BIT 2,A
+                self.op_test_bit(self.registers.a, 2)
+            },
+            0x58 => { // BIT 3,B
+                self.op_test_bit(self.registers.b, 3)
+            },
+            0x59 => { // BIT 3,C
+                self.op_test_bit(self.registers.c, 3)
+            },
+            0x5A => { // BIT 3,D
+                self.op_test_bit(self.registers.d, 3)
+            },
+            0x5B => { // BIT 3,E
+                self.op_test_bit(self.registers.e, 3)
+            },
+            0x5C => { // BIT 3,H
+                self.op_test_bit(self.registers.h, 3)
+            },
+            0x5D => { // BIT 3,L
+                self.op_test_bit(self.registers.l, 3)
+            },
+            0x5E => { // BIT 3,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.op_test_bit(get, 3)
+            },
+            0x5F => { // BIT 3,A
+                self.op_test_bit(self.registers.a, 3)
+            },
+            0x60 => { // BIT 4,B
+                self.op_test_bit(self.registers.b, 4)
+            },
+            0x61 => { // BIT 4,C
+                self.op_test_bit(self.registers.c, 4)
+            },
+            0x62 => { // BIT 4,D
+                self.op_test_bit(self.registers.d, 4)
+            },
+            0x63 => { // BIT 4,E
+                self.op_test_bit(self.registers.e, 4)
+            },
+            0x64 => { // BIT 4,H
+                self.op_test_bit(self.registers.h, 4)
+            },
+            0x65 => { // BIT 4,L
+                self.op_test_bit(self.registers.l, 4)
+            },
+            0x66 => { // BIT 4,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.op_test_bit(get, 4)
+            },
+            0x67 => { // BIT 4,A
+                self.op_test_bit(self.registers.a, 4)
+            },
+            0x68 => { // BIT 5,B
+                self.op_test_bit(self.registers.b, 5)
+            },
+            0x69 => { // BIT 5,C
+                self.op_test_bit(self.registers.c, 5)
+            },
+            0x6A => { // BIT 5,D
+                self.op_test_bit(self.registers.d, 5)
+            },
+            0x6B => { // BIT 5,E
+                self.op_test_bit(self.registers.e, 5)
+            },
+            0x6C => { // BIT 5,H
+                self.op_test_bit(self.registers.h, 5)
+            },
+            0x6D => { // BIT 5,L
+                self.op_test_bit(self.registers.l, 5)
+            },
+            0x6E => { // BIT 5,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.op_test_bit(get, 5)
+            },
+            0x6F => { // BIT 5,A
+                self.op_test_bit(self.registers.a, 5)
+            },
+            0x70 => { // BIT 6,B
+                self.op_test_bit(self.registers.b, 6)
+            },
+            0x71 => { // BIT 6,C
+                self.op_test_bit(self.registers.c, 6)
+            },
+            0x72 => { // BIT 6,D
+                self.op_test_bit(self.registers.d, 6)
+            },
+            0x73 => { // BIT 6,E
+                self.op_test_bit(self.registers.e, 6)
+            },
+            0x74 => { // BIT 6,H
+                self.op_test_bit(self.registers.h, 6)
+            },
+            0x75 => { // BIT 6,L
+                self.op_test_bit(self.registers.l, 6)
+            },
+            0x76 => { // BIT 6,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.op_test_bit(get, 6)
+            },
+            0x77 => { // BIT 6,A
+                self.op_test_bit(self.registers.a, 6)
+            },
+            0x78 => { // BIT 7,B
+                self.op_test_bit(self.registers.b, 7)
+            },
+            0x79 => { // BIT 7,C
+                self.op_test_bit(self.registers.c, 7)
+            },
+            0x7A => { // BIT 7,D
+                self.op_test_bit(self.registers.d, 7)
+            },
+            0x7B => { // BIT 7,E
+                self.op_test_bit(self.registers.e, 7)
+            },
+            0x7C => { // BIT 7,H
+                self.op_test_bit(self.registers.h, 7)
+            },
+            0x7D => { // BIT 7,L
+                self.op_test_bit(self.registers.l, 7)
+            },
+            0x7E => { // BIT 7,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.op_test_bit(get, 7)
+            },
+            0x7F => { // BIT 7,A
+                self.op_test_bit(self.registers.a, 7)
+            },
+            0x80 => { // RES 0,B
+                self.registers.b &= !CPU::op_bit(0)
+            },
+            0x81 => { // RES 0,C
+                self.registers.c &= !CPU::op_bit(0)
+            },
+            0x82 => { // RES 0,D
+                self.registers.d &= !CPU::op_bit(0)
+            },
+            0x83 => { // RES 0,E
+                self.registers.e &= !CPU::op_bit(0)
+            },
+            0x84 => { // RES 0,H
+                self.registers.h &= !CPU::op_bit(0)
+            },
+            0x85 => { // RES 0,L
+                self.registers.l &= !CPU::op_bit(0)
+            },
+            0x86 => { // RES 0,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(0))
+            },
+            0x87 => { // RES 0,A
+                self.registers.a &= !CPU::op_bit(0)
+            },
+            0x88 => { // RES 1,B
+                self.registers.b &= !CPU::op_bit(1)
+            },
+            0x89 => { // RES 1,C
+                self.registers.c &= !CPU::op_bit(1)
+            },
+            0x8A => { // RES 1,D
+                self.registers.d &= !CPU::op_bit(1)
+            },
+            0x8B => { // RES 1,E
+                self.registers.e &= !CPU::op_bit(1)
+            },
+            0x8C => { // RES 1,H
+                self.registers.h &= !CPU::op_bit(1)
+            },
+            0x8D => { // RES 1,L
+                self.registers.l &= !CPU::op_bit(1)
+            },
+            0x8E => { // RES 1,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(1))
+            },
+            0x8F => { // RES 1,A
+                self.registers.a &= !CPU::op_bit(1)
+            },
+            0x90 => { // RES 2,B
+                self.registers.b &= !CPU::op_bit(2)
+            },
+            0x91 => { // RES 2,C
+                self.registers.c &= !CPU::op_bit(2)
+            },
+            0x92 => { // RES 2,D
+                self.registers.d &= !CPU::op_bit(2)
+            },
+            0x93 => { // RES 2,E
+                self.registers.e &= !CPU::op_bit(2)
+            },
+            0x94 => { // RES 2,H
+                self.registers.h &= !CPU::op_bit(2)
+            },
+            0x95 => { // RES 2,L
+                self.registers.l &= !CPU::op_bit(2)
+            },
+            0x96 => { // RES 2,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(2))
+            },
+            0x97 => { // RES 2,A
+                self.registers.a &= !CPU::op_bit(2)
+            },
+            0x98 => { // RES 3,B
+                self.registers.b &= !CPU::op_bit(3)
+            },
+            0x99 => { // RES 3,C
+                self.registers.c &= !CPU::op_bit(3)
+            },
+            0x9A => { // RES 3,D
+                self.registers.d &= !CPU::op_bit(3)
+            },
+            0x9B => { // RES 3,E
+                self.registers.e &= !CPU::op_bit(3)
+            },
+            0x9C => { // RES 3,H
+                self.registers.h &= !CPU::op_bit(3)
+            },
+            0x9D => { // RES 3,L
+                self.registers.l &= !CPU::op_bit(3)
+            },
+            0x9E => { // RES 3,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(3))
+            },
+            0x9F => { // RES 3,A
+                self.registers.a &= !CPU::op_bit(3)
+            },
+            0xA0 => { // RES 4,B
+                self.registers.b &= !CPU::op_bit(4)
+            },
+            0xA1 => { // RES 4,C
+                self.registers.c &= !CPU::op_bit(4)
+            },
+            0xA2 => { // RES 4,D
+                self.registers.d &= !CPU::op_bit(4)
+            },
+            0xA3 => { // RES 4,E
+                self.registers.e &= !CPU::op_bit(4)
+            },
+            0xA4 => { // RES 4,H
+                self.registers.h &= !CPU::op_bit(4)
+            },
+            0xA5 => { // RES 4,L
+                self.registers.l &= !CPU::op_bit(4)
+            },
+            0xA6 => { // RES 4,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(4))
+            },
+            0xA7 => { // RES 4,A
+                self.registers.a &= !CPU::op_bit(4)
+            },
+            0xA8 => { // RES 5,B
+                self.registers.b &= !CPU::op_bit(5)
+            },
+            0xA9 => { // RES 5,C
+                self.registers.c &= !CPU::op_bit(5)
+            },
+            0xAA => { // RES 5,D
+                self.registers.d &= !CPU::op_bit(5)
+            },
+            0xAB => { // RES 5,E
+                self.registers.e &= !CPU::op_bit(5)
+            },
+            0xAC => { // RES 5,H
+                self.registers.h &= !CPU::op_bit(5)
+            },
+            0xAD => { // RES 5,L
+                self.registers.l &= !CPU::op_bit(5)
+            },
+            0xAE => { // RES 5,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(5))
+            },
+            0xAF => { // RES 5,A
+                self.registers.a &= !CPU::op_bit(5)
+            },
+            0xB0 => { // RES 6,B
+                self.registers.b &= !CPU::op_bit(6)
+            },
+            0xB1 => { // RES 6,C
+                self.registers.c &= !CPU::op_bit(6)
+            },
+            0xB2 => { // RES 6,D
+                self.registers.d &= !CPU::op_bit(6)
+            },
+            0xB3 => { // RES 6,E
+                self.registers.e &= !CPU::op_bit(6)
+            },
+            0xB4 => { // RES 6,H
+                self.registers.h &= !CPU::op_bit(6)
+            },
+            0xB5 => { // RES 6,L
+                self.registers.l &= !CPU::op_bit(6)
+            },
+            0xB6 => { // RES 6,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(6))
+            },
+            0xB7 => { // RES 6,A
+                self.registers.a &= !CPU::op_bit(6)
+            },
+            0xB8 => { // RES 7,B
+                self.registers.b &= !CPU::op_bit(7)
+            },
+            0xB9 => { // RES 7,C
+                self.registers.c &= !CPU::op_bit(7)
+            },
+            0xBA => { // RES 7,D
+                self.registers.d &= !CPU::op_bit(7)
+            },
+            0xBB => { // RES 7,E
+                self.registers.e &= !CPU::op_bit(7)
+            },
+            0xBC => { // RES 7,H
+                self.registers.h &= !CPU::op_bit(7)
+            },
+            0xBD => { // RES 7,L
+                self.registers.l &= !CPU::op_bit(7)
+            },
+            0xBE => { // RES 7,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(7))
+            },
+            0xBF => { // RES 7,A
+                self.registers.a &= !CPU::op_bit(7)
+            },
+            0xC0 => { // SET 0,B
+                self.registers.b |= CPU::op_bit(0)
+            },
+            0xC1 => { // SET 0,C
+                self.registers.c |= CPU::op_bit(0)
+            },
+            0xC2 => { // SET 0,D
+                self.registers.d |= CPU::op_bit(0)
+            },
+            0xC3 => { // SET 0,E
+                self.registers.e |= CPU::op_bit(0)
+            },
+            0xC4 => { // SET 0,H
+                self.registers.h |= CPU::op_bit(0)
+            },
+            0xC5 => { // SET 0,L
+                self.registers.l |= CPU::op_bit(0)
+            },
+            0xC6 => { // SET 0,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(0))
+            },
+            0xC7 => { // SET 0,A
+                self.registers.a |= CPU::op_bit(0)
+            },
+            0xC8 => { // SET 1,B
+                self.registers.b |= CPU::op_bit(1)
+            },
+            0xC9 => { // SET 1,C
+                self.registers.c |= CPU::op_bit(1)
+            },
+            0xCA => { // SET 1,D
+                self.registers.d |= CPU::op_bit(1)
+            },
+            0xCB => { // SET 1,E
+                self.registers.e |= CPU::op_bit(1)
+            },
+            0xCC => { // SET 1,H
+                self.registers.h |= CPU::op_bit(1)
+            },
+            0xCD => { // SET 1,L
+                self.registers.l |= CPU::op_bit(1)
+            },
+            0xCE => { // SET 1,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(1))
+            },
+            0xCF => { // SET 1,A
+                self.registers.a |= CPU::op_bit(1)
+            },
+            0xD0 => { // SET 2,B
+                self.registers.b |= CPU::op_bit(2)
+            },
+            0xD1 => { // SET 2,C
+                self.registers.c |= CPU::op_bit(2)
+            },
+            0xD2 => { // SET 2,D
+                self.registers.d |= CPU::op_bit(2)
+            },
+            0xD3 => { // SET 2,E
+                self.registers.e |= CPU::op_bit(2)
+            },
+            0xD4 => { // SET 2,H
+                self.registers.h |= CPU::op_bit(2)
+            },
+            0xD5 => { // SET 2,L
+                self.registers.l |= CPU::op_bit(2)
+            },
+            0xD6 => { // SET 2,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(2))
+            },
+            0xD7 => { // SET 2,A
+                self.registers.a |= CPU::op_bit(2)
+            },
+            0xD8 => { // SET 3,B
+                self.registers.b |= CPU::op_bit(3)
+            },
+            0xD9 => { // SET 3,C
+                self.registers.c |= CPU::op_bit(3)
+            },
+            0xDA => { // SET 3,D
+                self.registers.d |= CPU::op_bit(3)
+            },
+            0xDB => { // SET 3,E
+                self.registers.e |= CPU::op_bit(3)
+            },
+            0xDC => { // SET 3,H
+                self.registers.h |= CPU::op_bit(3)
+            },
+            0xDD => { // SET 3,L
+                self.registers.l |= CPU::op_bit(3)
+            },
+            0xDE => { // SET 3,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(3))
+            },
+            0xDF => { // SET 3,A
+                self.registers.a |= CPU::op_bit(3)
+            },
+            0xE0 => { // SET 4,B
+                self.registers.b |= CPU::op_bit(4)
+            },
+            0xE1 => { // SET 4,C
+                self.registers.c |= CPU::op_bit(4)
+            },
+            0xE2 => { // SET 4,D
+                self.registers.d |= CPU::op_bit(4)
+            },
+            0xE3 => { // SET 4,E
+                self.registers.e |= CPU::op_bit(4)
+            },
+            0xE4 => { // SET 4,H
+                self.registers.h |= CPU::op_bit(4)
+            },
+            0xE5 => { // SET 4,L
+                self.registers.l |= CPU::op_bit(4)
+            },
+            0xE6 => { // SET 4,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(4))
+            },
+            0xE7 => { // SET 4,A
+                self.registers.a |= CPU::op_bit(4)
+            },
+            0xE8 => { // SET 5,B
+                self.registers.b |= CPU::op_bit(5)
+            },
+            0xE9 => { // SET 5,C
+                self.registers.c |= CPU::op_bit(5)
+            },
+            0xEA => { // SET 5,D
+                self.registers.d |= CPU::op_bit(5)
+            },
+            0xEB => { // SET 5,E
+                self.registers.e |= CPU::op_bit(5)
+            },
+            0xEC => { // SET 5,H
+                self.registers.h |= CPU::op_bit(5)
+            },
+            0xED => { // SET 5,L
+                self.registers.l |= CPU::op_bit(5)
+            },
+            0xEE => { // SET 5,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(5))
+            },
+            0xEF => { // SET 5,A
+                self.registers.a |= CPU::op_bit(5)
+            },
+            0xF0 => { // SET 6,B
+                self.registers.b |= CPU::op_bit(6)
+            },
+            0xF1 => { // SET 6,C
+                self.registers.c |= CPU::op_bit(6)
+            },
+            0xF2 => { // SET 6,D
+                self.registers.d |= CPU::op_bit(6)
+            },
+            0xF3 => { // SET 6,E
+                self.registers.e |= CPU::op_bit(6)
+            },
+            0xF4 => { // SET 6,H
+                self.registers.h |= CPU::op_bit(6)
+            },
+            0xF5 => { // SET 6,L
+                self.registers.l |= CPU::op_bit(6)
+            },
+            0xF6 => { // SET 6,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(6))
+            },
+            0xF7 => { // SET 6,A
+                self.registers.a |= CPU::op_bit(6)
+            },
+            0xF8 => { // SET 7,B
+                self.registers.b |= CPU::op_bit(7)
+            },
+            0xF9 => { // SET 7,C
+                self.registers.c |= CPU::op_bit(7)
+            },
+            0xFA => { // SET 7,D
+                self.registers.d |= CPU::op_bit(7)
+            },
+            0xFB => { // SET 7,E
+                self.registers.e |= CPU::op_bit(7)
+            },
+            0xFC => { // SET 7,H
+                self.registers.h |= CPU::op_bit(7)
+            },
+            0xFD => { // SET 7,L
+                self.registers.l |= CPU::op_bit(7)
+            },
+            0xFE => { // SET 7,(HL)
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(7))
+            },
+            0xFF => { // SET 7,A
+                self.registers.a |= CPU::op_bit(7)
+            },
+            _ => { // Unknown OP code
+                panic!("Unknown CB opcode {}", opcode)
+            }
+        }
     }
 
     pub fn op_load_8bit(from:u8) -> u8 {
