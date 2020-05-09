@@ -1,4 +1,10 @@
-// LR35902
+/////////////////////////////
+// Sharp LR35902 CPU       //
+//                         //
+// Structs: CPU, Registers //
+/////////////////////////////
+#![allow(non_camel_case_types)]
+
 use crate::memory;
 
 ////////////////
@@ -30,6 +36,75 @@ impl CPU {
         }
     }
 
+    pub fn cpu_cycle(&mut self) {
+        self.fetch()
+    }
+
+    // Get next opcode
+    pub fn fetch(&mut self) {
+        let get = self.mem.get_byte(self.registers.pc as usize);
+        self.decode(get)
+    }
+
+    // Handle length of opcode args
+    pub fn decode(&mut self, opcode:u8) {
+        // CB-prefixed opcodes
+        if opcode == 0xCB {
+            self.registers.pc = CPU::inc_16bit(self.registers.pc);
+            let get_op = self.mem.get_byte(self.registers.pc as usize);
+            self.registers.pc = CPU::inc_16bit(self.registers.pc);
+            let get_arg1 = self.mem.get_byte(self.registers.pc as usize);
+            self.registers.pc = CPU::inc_16bit(self.registers.pc);
+            let get_arg2 = self.mem.get_byte(self.registers.pc as usize);
+            let arg16 = ((get_arg1 as u16) << 8) | get_arg2 as u16;
+            self.execute(0xCB, Some(get_op), arg16)
+        }
+        else {
+            match opcode {
+                // 3-byte opcodes
+                0x01 | 0x08 | 0x11 | 0x21 | 0x31 | 0xC2 | 0xC3 | 0xC4 | 
+                0xCA | 0xCC | 0xCD | 0xD2 | 0xD4 | 0xDA | 0xDC | 0xEA | 0xFA => {
+                    self.registers.pc = CPU::inc_16bit(self.registers.pc);
+                    let get_arg1 = self.mem.get_byte(self.registers.pc as usize);
+
+                    self.registers.pc = CPU::inc_16bit(self.registers.pc);
+                    let get_arg2 = self.mem.get_byte(self.registers.pc as usize);
+
+                    let arg16 = ((get_arg1 as u16) << 8) | get_arg2 as u16;
+
+                    self.execute(opcode, None, arg16)
+                },
+                // 2-byte opcodes
+                0x06 | 0x0E | 0x10 | 0x16 | 0x18 | 0x1E | 0x20 | 0x26 | 
+                0x28 | 0x2E | 0x30 | 0x36 | 0x38 | 0x3E | 0xC6 | 0xCE | 0xD6 |
+                0xDE | 0xE0 | 0xE6 | 0xE8 | 0xEE | 0xF0 | 0xF6 | 0xF8 | 0xFE => {
+                    self.registers.pc = CPU::inc_16bit(self.registers.pc);
+                    let arg8 = self.mem.get_byte(self.registers.pc as usize);
+
+                    self.execute(opcode, None, arg8 as u16)
+                },
+                // 1-byte opcodes
+                _ => {
+                    if opcode == 0xCB { // Should be impossible
+                        panic!("CB opcode passed twice to decode()")
+                    }
+                    else {
+                        self.execute(opcode, None, 0)
+                    }
+                }
+            }
+        }
+    }
+
+    // Do it
+    pub fn execute(&mut self, opcode:u8, opcode2:Option<u8>, arg:u16) {
+        self.op_match(opcode, opcode2, arg)
+    }
+
+    /////////////////////
+    // Utility methods //
+    /////////////////////
+
     // Decrement 8 bit value
     pub fn dec_8bit(reg:u8) -> u8 {
         reg - 1
@@ -38,7 +113,7 @@ impl CPU {
     // Decrement 16 bit value
     // Endian-swapped, so upper byte it decremented
     pub fn dec_16bit(reg:u16) -> u16 {
-        CPU::swap_endian(reg) - 1
+        CPU::swap_endian(CPU::swap_endian(reg) - 1)
     }
 
     // Decrement combined 8 bit registers as a 16 bit one
@@ -46,18 +121,18 @@ impl CPU {
     pub fn dec_16bits(&mut self, reg:RegistersEnum) {
         match reg {
             RegistersEnum::bc => {
-                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.b, self.registers.c)) - 1;
-                self.registers.b = (concat >> 8) as u8;
+                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.c, self.registers.b) - 1);
+                self.registers.b = CPU::get_upper_byte(concat);
                 self.registers.c = concat as u8
             },
             RegistersEnum::de => {
-                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.d, self.registers.e)) - 1;
-                self.registers.d = (concat >> 8) as u8;
+                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.e, self.registers.d) - 1);
+                self.registers.d = CPU::get_upper_byte(concat);
                 self.registers.e = concat as u8
             },
             RegistersEnum::hl => {
-                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.h, self.registers.l)) - 1;
-                self.registers.h = (concat >> 8) as u8;
+                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.l, self.registers.h) - 1);
+                self.registers.h = CPU::get_upper_byte(concat);
                 self.registers.l = concat as u8
             }
             _ => {
@@ -79,7 +154,7 @@ impl CPU {
     // Increment 16 bit value
     // Endian-swapped, so upper byte is incremented
     pub fn inc_16bit(reg:u16) -> u16 {
-        CPU::swap_endian(reg) + 1
+        CPU::swap_endian(CPU::swap_endian(reg) + 1)
     }
 
     // Increment combined 8 bit registers as a 16 bit one
@@ -87,18 +162,18 @@ impl CPU {
     pub fn inc_16bits(&mut self, reg:RegistersEnum) {
         match reg {
             RegistersEnum::bc => {
-                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.b, self.registers.c)) + 1;
-                self.registers.b = (concat >> 8) as u8;
+                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.c, self.registers.b) + 1);
+                self.registers.b = CPU::get_upper_byte(concat);
                 self.registers.c = concat as u8
             },
             RegistersEnum::de => {
-                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.d, self.registers.e)) + 1;
-                self.registers.d = (concat >> 8) as u8;
+                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.e, self.registers.d) + 1);
+                self.registers.d = CPU::get_upper_byte(concat);
                 self.registers.e = concat as u8
             },
             RegistersEnum::hl => {
-                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.h, self.registers.l)) + 1;
-                self.registers.h = (concat >> 8) as u8;
+                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.l, self.registers.h) + 1);
+                self.registers.h = CPU::get_upper_byte(concat);
                 self.registers.l = concat as u8
             }
             _ => {
@@ -1708,12 +1783,13 @@ impl CPU {
             },
             0xFF => { // SET 7,A
                 self.registers.a |= CPU::op_bit(7)
-            },
-            _ => { // Unknown OP code
-                panic!("Unknown CB opcode {}", opcode)
             }
         }
     }
+
+    //////////////
+    // OP codes //
+    //////////////
 
     pub fn op_load_8bit(from:u8) -> u8 {
         from

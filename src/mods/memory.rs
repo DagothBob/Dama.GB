@@ -1,3 +1,4 @@
+#![allow(non_camel_case_types)]
 
 pub struct MemMap {
     mem:[u8;0x10000]
