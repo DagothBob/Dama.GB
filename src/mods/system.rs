@@ -1,10 +1,10 @@
 #![allow(non_camel_case_types)]
-#![allow(clippy::single_match)]
 
 extern crate sdl2;
 
 use sdl2::pixels::Color;
 use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
 
 use crate::cpu;
 use crate::memory;
@@ -37,7 +37,16 @@ impl System {
 
         while !self.quit {
             self.handle_sdl_events(self.sdl_context.event_pump().unwrap());
-            self.gb_cpu.cpu_cycle();
+
+            // Halted and interrupts enabled means CPU will halt instruction flow
+            // Else, stop trying to halt
+            if !self.gb_cpu.halt && self.gb_cpu.ime {
+                self.gb_cpu.cpu_cycle();
+            }
+            else if self.gb_cpu.halt && !self.gb_cpu.ime {
+                self.gb_cpu.halt = false;
+            }
+
             self.interrupt_handler();
         }
     }
@@ -47,8 +56,10 @@ impl System {
         let int_f = self.gb_memory.get_byte(memory::IF as usize);
 
         if self.gb_cpu.ime {
-            // TODO: PC on stack
+            self.gb_cpu.op_call(); // Push PC onto stack
 
+            // Check that interrupt-enable and appropriate interrupt flag is set
+            // Ordered how they are precedented on GB hardware
             if (int_e & memory::IE_VBLNK) == memory::IE_VBLNK &&
                (int_f & memory::IF_VBLNK) == memory::IF_VBLNK {
                 self.gb_memory.set_memory(memory::IF as usize, int_f & !memory::IF_VBLNK);
@@ -94,10 +105,45 @@ impl System {
     }
 
     pub fn handle_sdl_events(&mut self, mut event_pump:sdl2::EventPump) {
+        let pad_state = self.gb_memory.get_byte(memory::P1 as usize);
+        let int_f = self.gb_memory.get_byte(memory::IF as usize);
+
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit {..} => {
                     self.quit = true
+                },
+                Event::KeyDown { keycode: Some(Keycode::Right), .. } => {
+                    self.gb_memory.set_memory(memory::P1 as usize, pad_state | memory::P1_RIGHT);
+                    self.gb_memory.set_memory(memory::IF as usize, int_f | memory::IF_JYPAD)
+                },
+                Event::KeyDown { keycode: Some(Keycode::Left), .. } => {
+                    self.gb_memory.set_memory(memory::P1 as usize, pad_state | memory::P1_LEFT);
+                    self.gb_memory.set_memory(memory::IF as usize, int_f | memory::IF_JYPAD)
+                },
+                Event::KeyDown { keycode: Some(Keycode::Up), .. } => {
+                    self.gb_memory.set_memory(memory::P1 as usize, pad_state | memory::P1_UP);
+                    self.gb_memory.set_memory(memory::IF as usize, int_f | memory::IF_JYPAD)
+                },
+                Event::KeyDown { keycode: Some(Keycode::Down), .. } => {
+                    self.gb_memory.set_memory(memory::P1 as usize, pad_state | memory::P1_DOWN);
+                    self.gb_memory.set_memory(memory::IF as usize, int_f | memory::IF_JYPAD)
+                },
+                Event::KeyDown { keycode: Some(Keycode::Z), .. } => {
+                    self.gb_memory.set_memory(memory::P1 as usize, pad_state | memory::P1_ABUTT);
+                    self.gb_memory.set_memory(memory::IF as usize, int_f | memory::IF_JYPAD)
+                },
+                Event::KeyDown { keycode: Some(Keycode::X), .. } => {
+                    self.gb_memory.set_memory(memory::P1 as usize, pad_state | memory::P1_BBUTT);
+                    self.gb_memory.set_memory(memory::IF as usize, int_f | memory::IF_JYPAD)
+                },
+                Event::KeyDown { keycode: Some(Keycode::C), .. } => {
+                    self.gb_memory.set_memory(memory::P1 as usize, pad_state | memory::P1_SELEC);
+                    self.gb_memory.set_memory(memory::IF as usize, int_f | memory::IF_JYPAD)
+                },
+                Event::KeyDown { keycode: Some(Keycode::V), .. } => {
+                    self.gb_memory.set_memory(memory::P1 as usize, pad_state | memory::P1_START);
+                    self.gb_memory.set_memory(memory::IF as usize, int_f | memory::IF_JYPAD)
                 },
                 _ => {
 

@@ -10,6 +10,14 @@ pub const TIMR:u16 = 0x0050; // Timer interrupt vector
 pub const SRAL:u16 = 0x0058; // Serial interrupt vector
 pub const JPAD:u16 = 0x0060; // Joypad interrupt vector
 pub const P1  :u16 = 0xFF00; // Pad IO
+    pub const P1_RIGHT:u8 = 0b0001_0001;
+    pub const P1_LEFT :u8 = 0b0001_0010;
+    pub const P1_UP   :u8 = 0b0001_0100;
+    pub const P1_DOWN :u8 = 0b0001_1000;
+    pub const P1_ABUTT:u8 = 0b0010_0001;
+    pub const P1_BBUTT:u8 = 0b0010_0010;
+    pub const P1_SELEC:u8 = 0b0010_0100;
+    pub const P1_START:u8 = 0b0010_1000;
 pub const SB  :u16 = 0xFF01; // Serial transfer data
 pub const SC  :u16 = 0xFF02; // Serial IO control
 pub const DIV :u16 = 0xFF04; // Divider
@@ -96,13 +104,18 @@ impl MemMap {
     // Memory addresses from the game code or registers
     // needs to be endian-swapped for indexing
     pub fn set_memory(&mut self, addr:usize, val:u8) {
-        if addr >= 0xE000 && addr <= 0xFDFF {
-            self.mem[addr - 0x2000] = val
+        if addr == DIV as usize {
+            self.mem[addr] = 0
         }
-        else if addr >= 0xC000 && addr <= 0xDDFF {
-            self.mem[addr + 0x2000] = val
+        else {
+            if addr >= 0xE000 && addr <= 0xFDFF {
+                self.mem[addr - 0x2000] = val
+            }
+            else if addr >= 0xC000 && addr <= 0xDDFF {
+                self.mem[addr + 0x2000] = val
+            }
+            self.mem[addr] = val
         }
-        self.mem[addr] = val
     }
 
     pub fn get_byte(&mut self, addr:usize) -> u8 {
