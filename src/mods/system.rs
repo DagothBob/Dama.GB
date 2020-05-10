@@ -38,13 +38,14 @@ impl System {
         while !self.quit {
             self.handle_sdl_events(self.sdl_context.event_pump().unwrap());
 
-            // Halted and interrupts enabled means CPU will halt instruction flow
-            // Else, stop trying to halt
-            if !self.gb_cpu.halt && self.gb_cpu.ime {
+            // Halted/stopped and interrupts enabled means CPU will halt instruction flow
+            // Else, turn halt/stop flag off
+            if !self.gb_cpu.halt && !self.gb_cpu.stop && self.gb_cpu.ime {
                 self.gb_cpu.cpu_cycle();
             }
-            else if self.gb_cpu.halt && !self.gb_cpu.ime {
+            else if (self.gb_cpu.halt || self.gb_cpu.stop) && !self.gb_cpu.ime {
                 self.gb_cpu.halt = false;
+                self.gb_cpu.stop = false;
             }
 
             self.interrupt_handler();
@@ -64,6 +65,8 @@ impl System {
                (int_f & memory::IF_VBLNK) == memory::IF_VBLNK {
                 self.gb_memory.set_memory(memory::IF as usize, int_f & !memory::IF_VBLNK);
                 self.gb_cpu.ime = false;
+                self.gb_cpu.halt = false;
+                self.gb_cpu.stop = false;
                 self.gb_cpu.registers.pc = memory::VBLN;
                 memory::IF_VBLNK
             }
@@ -71,6 +74,8 @@ impl System {
                     (int_f & memory::IF_LSTAT) == memory::IF_LSTAT {
                 self.gb_memory.set_memory(memory::IF as usize, int_f & !memory::IF_LSTAT);
                 self.gb_cpu.ime = false;
+                self.gb_cpu.halt = false;
+                self.gb_cpu.stop = false;
                 self.gb_cpu.registers.pc = memory::LSTT;
                 memory::IF_LSTAT
             }
@@ -78,6 +83,8 @@ impl System {
                     (int_f & memory::IF_TIMER) == memory::IF_TIMER {
                 self.gb_memory.set_memory(memory::IF as usize, int_f & !memory::IF_TIMER);
                 self.gb_cpu.ime = false;
+                self.gb_cpu.halt = false;
+                self.gb_cpu.stop = false;
                 self.gb_cpu.registers.pc = memory::TIMR;
                 memory::IF_TIMER
             }
@@ -85,6 +92,8 @@ impl System {
                     (int_f & memory::IF_SRIAL) == memory::IF_SRIAL {
                 self.gb_memory.set_memory(memory::IF as usize, int_f & !memory::IF_SRIAL);
                 self.gb_cpu.ime = false;
+                self.gb_cpu.halt = false;
+                self.gb_cpu.stop = false;
                 self.gb_cpu.registers.pc = memory::SRAL;
                 memory::IF_SRIAL
             }
@@ -92,6 +101,8 @@ impl System {
                     (int_f & memory::IF_JYPAD) == memory::IF_JYPAD {
                 self.gb_memory.set_memory(memory::IF as usize, int_f & !memory::IF_JYPAD);
                 self.gb_cpu.ime = false;
+                self.gb_cpu.halt = false;
+                self.gb_cpu.stop = false;
                 self.gb_cpu.registers.pc = memory::JPAD;
                 memory::IF_JYPAD
             }
