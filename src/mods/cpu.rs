@@ -11,8 +11,11 @@ use crate::memory;
 // CPU struct //
 ////////////////
 pub struct CPU {
-    registers:Registers,
-    mem:memory::MemMap
+    pub registers:Registers,
+    pub mem:memory::MemMap,
+    pub ime:bool,            // Interrupt Master Enable flag
+    pub halt:bool,           // Waiting for interrupt
+    pub stop:bool            // Evidently, "VERY low power" according to gbdev
 }
 
 pub enum JumpCondition {
@@ -32,10 +35,14 @@ impl CPU {
     pub fn init() -> CPU {
         CPU {
             registers:Registers::init(),
-            mem:memory::MemMap::init()
+            mem:memory::MemMap::init(),
+            ime:false,
+            halt:false,
+            stop:false
         }
     }
 
+    // Entry point for fetch-decode-execute cycle
     pub fn cpu_cycle(&mut self) {
         self.fetch()
     }
@@ -337,7 +344,7 @@ impl CPU {
                 self.registers.l = CPU::op_load_8bit(arg as u8)
             },
             0x2F => { // CPL
-                self.op_compare_8bit(self.registers.l)
+                self.op_complement()
             },
             0x30 => { // JR NC,r8
                 self.op_jump_if_add(arg as u8, JumpCondition::NotCarry)
@@ -1135,28 +1142,30 @@ impl CPU {
                 self.registers.a = self.op_shift_righta_carry(self.registers.a, arg as u8)
             },
             0x30 => { // SWAP B
-                
+                self.registers.b = self.op_swap(self.registers.b)
             },
             0x31 => { // SWAP C
-                
+                self.registers.c = self.op_swap(self.registers.c)
             },
             0x32 => { // SWAP D
-                
+                self.registers.d = self.op_swap(self.registers.d)
             },
             0x33 => { // SWAP E
-                
+                self.registers.e = self.op_swap(self.registers.e)
             },
             0x34 => { // SWAP H
-                
+                self.registers.h = self.op_swap(self.registers.h)
             },
             0x35 => { // SWAP L
-                
+                self.registers.l = self.op_swap(self.registers.l)
             },
             0x36 => { // SWAP (HL)
-                
+                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let val = self.op_swap(get);
+                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
             },
             0x37 => { // SWAP A
-                
+                self.registers.a = self.op_swap(self.registers.a);
             },
             0x38 => { // SRL B
                 self.registers.b = self.op_shift_rightl_carry(self.registers.b, arg as u8)
@@ -2181,19 +2190,21 @@ impl CPU {
     }
 
     pub fn op_halt(&mut self) {
-        // TODO
+        self.halt = true
     }
 
     pub fn op_stop(&mut self) {
-        // TODO
+        self.stop = true
     }
 
     pub fn op_disable_interrupts(&mut self) {
-        // TODO
+        self.ime = false;
+        self.mem.set_memory(memory::IE as usize, 0)
     }
 
     pub fn op_enable_interrupts(&mut self) {
-        // TODO
+        self.ime = true;
+        self.mem.set_memory(memory::IE as usize, memory::IE_ALL)
     }
 
     pub fn op_rotate_left(&mut self, reg:u8, bits:u8) -> u8 {
@@ -2550,7 +2561,8 @@ impl CPU {
         self.registers.pc = self.mem.get_word(CPU::swap_endian(self.registers.sp) as usize);
         self.registers.sp = CPU::inc_16bit(self.registers.sp);
         self.registers.sp = CPU::inc_16bit(self.registers.sp);
-        // TODO
+        self.ime = true;
+        self.mem.set_memory(memory::IE as usize, memory::IE_ALL)
     }
 }
 
@@ -2558,16 +2570,16 @@ impl CPU {
 // Registers struct //
 //////////////////////
 pub struct Registers {
-    a:u8,
-    b:u8,
-    c:u8,
-    d:u8,
-    e:u8,
-    f:u8,
-    h:u8,
-    l:u8,
-    sp:u16,
-    pc:u16
+    pub a:u8,
+    pub b:u8,
+    pub c:u8,
+    pub d:u8,
+    pub e:u8,
+    pub f:u8,
+    pub h:u8,
+    pub l:u8,
+    pub sp:u16,
+    pub pc:u16
 }
 
 pub enum RegistersEnum {
