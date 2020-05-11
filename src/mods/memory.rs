@@ -1,5 +1,7 @@
 #![allow(non_camel_case_types)]
 
+use crate::memory;
+
 pub struct MemMap {
     pub mem:[u8;0x10000]
 }
@@ -62,6 +64,13 @@ pub const LCDC:u16 = 0xFF40; // LCD control
     pub const LCDC_WDS:u8 = 0b0100_0000; // Window Tile Map Display Select
     pub const LCDC_ENA:u8 = 0b1000_0000; // LCD Display Enable
 pub const STAT:u16 = 0xFF41; // LCDC status
+    pub const STAT_MF0:u8 = 0b0000_0001; // 00 - H-Blank       | 01 - V-Blank
+    pub const STAT_MF1:u8 = 0b0000_0010; // 02 - Searching OAM | 03 - Transfer data to LCD
+    pub const STAT_COF:u8 = 0b0000_0100; // Coincidence Flag LY/LYC: 0 - different, 1 - equal
+    pub const STAT_HBI:u8 = 0b0000_1000; // H-Blank Interrupt
+    pub const STAT_VBI:u8 = 0b0001_0000; // V-Blank Interrupt
+    pub const STAT_OAM:u8 = 0b0010_0000; // OAM Interrupt
+    pub const STAT_COI:u8 = 0b0100_0000; // LYC=LY Coincidence Interrupt
 pub const SCY :u16 = 0xFF42; // Scroll Y
 pub const SCX :u16 = 0xFF43; // Scroll X
 pub const LY  :u16 = 0xFF44; // LCDC Y
@@ -112,10 +121,24 @@ impl MemMap {
     // Memory addresses from the game code or registers
     // needs to be endian-swapped for indexing
     pub fn set_memory(&mut self, addr:usize, val:u8) {
+        // DIV register writes result in 0
         if addr == DIV as usize {
             self.mem[addr] = 0
         }
+        // Check if LCD STAT mode prohibits writing to VRAM or OAM
+        else if addr >= 0x8000 && addr <= 0x9FFF {
+            // LCD STAT is not in mode 3 and trying to write to VRAM/OAM OR
+            // LCD STAT is not in mode 2 and trying to write to OAM
+            if (((self.get_byte(memory::STAT as usize) & memory::STAT_MF0) != 1) &&
+                ((self.get_byte(memory::STAT as usize) & memory::STAT_MF1) != 2)) ||
+               (((self.get_byte(memory::STAT as usize) & memory::STAT_MF0) != 0) &&
+                ((self.get_byte(memory::STAT as usize) & memory::STAT_MF1) != 2) &&
+                addr >= 0xFE00 && addr <= 0xFE9F) {
+                self.mem[addr] = val
+            }
+        }
         else {
+            // Echo RAM emulation
             if addr >= 0xE000 && addr <= 0xFDFF {
                 self.mem[addr - 0x2000] = val
             }

@@ -3,6 +3,7 @@
 #[path = "./mods/system.rs"] mod system;
 #[path = "./mods/cpu.rs"] mod cpu;
 #[path = "./mods/memory.rs"] mod memory;
+#[path = "./mods/display.rs"] mod display;
 
 use system::System;
 

@@ -162,4 +162,8 @@ impl System {
             }
         }
     }
+
+    pub fn lcdc_compare(&mut self) {
+        
+    }
 }
