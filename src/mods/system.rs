@@ -41,7 +41,7 @@ impl System {
             // Halted/stopped and interrupts enabled means CPU will halt instruction flow
             // Else, turn halt/stop flag off
             if !self.gb_cpu.halt && !self.gb_cpu.stop && self.gb_cpu.ime {
-                self.gb_cpu.cpu_cycle();
+                self.gb_cpu.cpu_cycle(&mut self.gb_memory);
             }
             else if (self.gb_cpu.halt || self.gb_cpu.stop) && !self.gb_cpu.ime {
                 self.gb_cpu.halt = false;
@@ -57,7 +57,7 @@ impl System {
         let int_f = self.gb_memory.get_byte(memory::IF as usize);
 
         if self.gb_cpu.ime {
-            self.gb_cpu.op_call(); // Push PC onto stack
+            self.gb_cpu.op_call(&mut self.gb_memory); // Push PC onto stack
 
             // Check that interrupt-enable and appropriate interrupt flag is set
             // Ordered how they are precedented on GB hardware

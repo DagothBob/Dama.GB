@@ -5,14 +5,13 @@
 /////////////////////////////
 #![allow(non_camel_case_types)]
 
-use crate::memory;
+use crate::memory::MemMap;
 
 ////////////////
 // CPU struct //
 ////////////////
 pub struct CPU {
     pub registers:Registers,
-    pub mem:memory::MemMap,
     pub ime:bool,            // Interrupt Master Enable flag
     pub halt:bool,           // Waiting for interrupt
     pub stop:bool            // Evidently, "VERY low power" according to gbdev
@@ -35,7 +34,6 @@ impl CPU {
     pub fn init() -> CPU {
         CPU {
             registers:Registers::init(),
-            mem:memory::MemMap::init(),
             ime:false,
             halt:false,
             stop:false
@@ -43,28 +41,28 @@ impl CPU {
     }
 
     // Entry point for fetch-decode-execute cycle
-    pub fn cpu_cycle(&mut self) {
-        self.fetch()
+    pub fn cpu_cycle(&mut self, memory:&mut MemMap) {
+        self.fetch(memory)
     }
 
     // Get next opcode
-    pub fn fetch(&mut self) {
-        let get = self.mem.get_byte(self.registers.pc as usize);
-        self.decode(get)
+    pub fn fetch(&mut self, memory:&mut MemMap) {
+        let get = memory.get_byte(self.registers.pc as usize);
+        self.decode(memory, get)
     }
 
     // Handle length of opcode args
-    pub fn decode(&mut self, opcode:u8) {
+    pub fn decode(&mut self, memory:&mut MemMap, opcode:u8) {
         // CB-prefixed opcodes
         if opcode == 0xCB {
             self.registers.pc = CPU::inc_16bit(self.registers.pc);
-            let get_op = self.mem.get_byte(self.registers.pc as usize);
+            let get_op = memory.get_byte(self.registers.pc as usize);
             self.registers.pc = CPU::inc_16bit(self.registers.pc);
-            let get_arg1 = self.mem.get_byte(self.registers.pc as usize);
+            let get_arg1 = memory.get_byte(self.registers.pc as usize);
             self.registers.pc = CPU::inc_16bit(self.registers.pc);
-            let get_arg2 = self.mem.get_byte(self.registers.pc as usize);
+            let get_arg2 = memory.get_byte(self.registers.pc as usize);
             let arg16 = ((get_arg1 as u16) << 8) | get_arg2 as u16;
-            self.execute(0xCB, Some(get_op), arg16)
+            self.execute(memory, 0xCB, Some(get_op), arg16)
         }
         else {
             match opcode {
@@ -72,23 +70,23 @@ impl CPU {
                 0x01 | 0x08 | 0x11 | 0x21 | 0x31 | 0xC2 | 0xC3 | 0xC4 | 
                 0xCA | 0xCC | 0xCD | 0xD2 | 0xD4 | 0xDA | 0xDC | 0xEA | 0xFA => {
                     self.registers.pc = CPU::inc_16bit(self.registers.pc);
-                    let get_arg1 = self.mem.get_byte(self.registers.pc as usize);
+                    let get_arg1 = memory.get_byte(self.registers.pc as usize);
 
                     self.registers.pc = CPU::inc_16bit(self.registers.pc);
-                    let get_arg2 = self.mem.get_byte(self.registers.pc as usize);
+                    let get_arg2 = memory.get_byte(self.registers.pc as usize);
 
                     let arg16 = ((get_arg1 as u16) << 8) | get_arg2 as u16;
 
-                    self.execute(opcode, None, arg16)
+                    self.execute(memory, opcode, None, arg16)
                 },
                 // 2-byte opcodes
                 0x06 | 0x0E | 0x10 | 0x16 | 0x18 | 0x1E | 0x20 | 0x26 | 
                 0x28 | 0x2E | 0x30 | 0x36 | 0x38 | 0x3E | 0xC6 | 0xCE | 0xD6 |
                 0xDE | 0xE0 | 0xE6 | 0xE8 | 0xEE | 0xF0 | 0xF6 | 0xF8 | 0xFE => {
                     self.registers.pc = CPU::inc_16bit(self.registers.pc);
-                    let arg8 = self.mem.get_byte(self.registers.pc as usize);
+                    let arg8 = memory.get_byte(self.registers.pc as usize);
 
-                    self.execute(opcode, None, arg8 as u16)
+                    self.execute(memory, opcode, None, arg8 as u16)
                 },
                 // 1-byte opcodes
                 _ => {
@@ -96,7 +94,7 @@ impl CPU {
                         panic!("CB opcode passed twice to decode()")
                     }
                     else {
-                        self.execute(opcode, None, 0)
+                        self.execute(memory, opcode, None, 0)
                     }
                 }
             }
@@ -104,8 +102,8 @@ impl CPU {
     }
 
     // Do it
-    pub fn execute(&mut self, opcode:u8, opcode2:Option<u8>, arg:u16) {
-        self.op_match(opcode, opcode2, arg)
+    pub fn execute(&mut self, memory:&mut MemMap, opcode:u8, opcode2:Option<u8>, arg:u16) {
+        self.op_match(memory, opcode, opcode2, arg)
     }
 
     /////////////////////
@@ -197,7 +195,7 @@ impl CPU {
     }
 
     // opcode = opcode found in first 256, opcode2 = opcode after CB, arg = literal value
-    pub fn op_match(&mut self, opcode:u8, opcode2:Option<u8>, arg:u16) {
+    pub fn op_match(&mut self, memory:&mut MemMap, opcode:u8, opcode2:Option<u8>, arg:u16) {
         match opcode {
             0x00 => { // NOP
                 CPU::op_nop()
@@ -206,7 +204,7 @@ impl CPU {
                 self.op_load_16bits(RegistersEnum::bc, arg)
             },
             0x02 => { // LD (BC),A
-                self.mem.set_memory(Registers::concat_registers(self.registers.c, self.registers.b) as usize, self.registers.a)
+                memory.set_memory(Registers::concat_registers(self.registers.c, self.registers.b) as usize, self.registers.a)
             },
             0x03 => { // INC BC
                 self.op_increment_16bit(RegistersEnum::bc)
@@ -224,14 +222,14 @@ impl CPU {
                 self.registers.a = self.op_rotate_left_carry(self.registers.a, 1)
             },
             0x08 => { // LD (a16),SP
-                self.mem.set_memory(CPU::swap_endian(arg) as usize, self.registers.sp as u8);
-                self.mem.set_memory((CPU::swap_endian(arg) + 1) as usize, CPU::get_upper_byte(self.registers.sp))
+                memory.set_memory(CPU::swap_endian(arg) as usize, self.registers.sp as u8);
+                memory.set_memory((CPU::swap_endian(arg) + 1) as usize, CPU::get_upper_byte(self.registers.sp))
             },
             0x09 => { // ADD HL,BC
                 self.op_add_16bit(RegistersEnum::hl, Registers::concat_registers(self.registers.b, self.registers.c))
             },
             0x0A => { // LD A,(BC)
-                self.registers.a = CPU::op_load_8bit(self.mem.get_byte(Registers::concat_registers(self.registers.c, self.registers.b) as usize))
+                self.registers.a = CPU::op_load_8bit(memory.get_byte(Registers::concat_registers(self.registers.c, self.registers.b) as usize))
             },
             0x0B => { // DEC BC
                 self.op_decrement_16bit(RegistersEnum::bc)
@@ -255,7 +253,7 @@ impl CPU {
                 self.op_load_16bits(RegistersEnum::de, arg)
             },
             0x12 => { // LD (DE),A
-                self.mem.set_memory(Registers::concat_registers(self.registers.e, self.registers.d) as usize, self.registers.a)
+                memory.set_memory(Registers::concat_registers(self.registers.e, self.registers.d) as usize, self.registers.a)
             },
             0x13 => { // INC DE
                 self.op_increment_16bit(RegistersEnum::de)
@@ -279,7 +277,7 @@ impl CPU {
                 self.op_add_16bit(RegistersEnum::hl, Registers::concat_registers(self.registers.d, self.registers.e))
             },
             0x1A => { // LD A,(DE)
-                self.registers.a = self.mem.get_byte(Registers::concat_registers(self.registers.e, self.registers.d) as usize)
+                self.registers.a = memory.get_byte(Registers::concat_registers(self.registers.e, self.registers.d) as usize)
             },
             0x1B => { // DEC DE
                 self.op_decrement_16bit(RegistersEnum::de)
@@ -303,7 +301,7 @@ impl CPU {
                 self.op_load_16bits(RegistersEnum::hl, arg)
             },
             0x22 => { // LD (HL+),A
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.a);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.a);
                 self.inc_16bits(RegistersEnum::hl)
             },
             0x23 => { // INC HL
@@ -328,7 +326,7 @@ impl CPU {
                 self.op_add_16bit(RegistersEnum::hl, Registers::concat_registers(self.registers.h, self.registers.l))
             },
             0x2A => { // LD A,(HL+)
-                self.registers.a = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                self.registers.a = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.inc_16bits(RegistersEnum::hl)
             },
             0x2B => { // DEC HL
@@ -353,22 +351,22 @@ impl CPU {
                 self.registers.sp = CPU::op_load_16bit(arg)
             },
             0x32 => { // LD (HL-),A
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.a);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.a);
                 self.dec_16bits(RegistersEnum::hl)
             },
             0x33 => { // INC SP
                 self.op_increment_16bit(RegistersEnum::sp)
             },
             0x34 => { // INC (HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get + 1)
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get + 1)
             },
             0x35 => { // DEC (HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get - 1)
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get - 1)
             },
             0x36 => { // LD (HL),d8
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, arg as u8)
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, arg as u8)
             },
             0x37 => { // SCF
                 self.op_set_carry()
@@ -380,7 +378,7 @@ impl CPU {
                 self.op_add_16bit(RegistersEnum::hl, self.registers.sp)
             },
             0x3A => { // LD A,(HL-)
-                self.registers.a = CPU::op_load_8bit(self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize));
+                self.registers.a = CPU::op_load_8bit(memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize));
                 self.dec_16bits(RegistersEnum::hl)
             },
             0x3B => { // DEC SP
@@ -417,7 +415,7 @@ impl CPU {
                 self.registers.b = CPU::op_load_8bit(self.registers.l)
             },
             0x46 => { // LD B,(HL)
-                self.registers.b = CPU::op_load_8bit(self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize))
+                self.registers.b = CPU::op_load_8bit(memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize))
             },
             0x47 => { // LD B,A
                 self.registers.b = CPU::op_load_8bit(self.registers.a)
@@ -441,7 +439,7 @@ impl CPU {
                 self.registers.c = CPU::op_load_8bit(self.registers.l)
             },
             0x4E => { // LD C,(HL)
-                self.registers.c = CPU::op_load_8bit(self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize))
+                self.registers.c = CPU::op_load_8bit(memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize))
             },
             0x4F => { // LD C,A
                 self.registers.c = CPU::op_load_8bit(self.registers.a)
@@ -465,7 +463,7 @@ impl CPU {
                 self.registers.d = CPU::op_load_8bit(self.registers.l)
             },
             0x56 => { // LD D,(HL)
-                self.registers.d = CPU::op_load_8bit(self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize))
+                self.registers.d = CPU::op_load_8bit(memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize))
             },
             0x57 => { // LD D,A
                 self.registers.d = CPU::op_load_8bit(self.registers.a)
@@ -489,7 +487,7 @@ impl CPU {
                 self.registers.e = CPU::op_load_8bit(self.registers.l)
             },
             0x5E => { // LD E,(HL)
-                self.registers.e = CPU::op_load_8bit(self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize))
+                self.registers.e = CPU::op_load_8bit(memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize))
             },
             0x5F => { // LD E,A
                 self.registers.e = CPU::op_load_8bit(self.registers.a)
@@ -513,7 +511,7 @@ impl CPU {
                 self.registers.h = CPU::op_load_8bit(self.registers.l)
             },
             0x66 => { // LD H,(HL)
-                self.registers.h = CPU::op_load_8bit(self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize))
+                self.registers.h = CPU::op_load_8bit(memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize))
             },
             0x67 => { // LD H,A
                 self.registers.h = CPU::op_load_8bit(self.registers.a)
@@ -537,34 +535,34 @@ impl CPU {
                 self.registers.l = CPU::op_load_8bit(self.registers.l)
             },
             0x6E => { // LD L,(HL)
-                self.registers.l = CPU::op_load_8bit(self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize))
+                self.registers.l = CPU::op_load_8bit(memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize))
             },
             0x6F => { // LD L,A
                 self.registers.l = CPU::op_load_8bit(self.registers.a)
             },
             0x70 => { // LD (HL),B
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.b)
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.b)
             },
             0x71 => { // LD (HL),C
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.c)
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.c)
             },
             0x72 => { // LD (HL),D
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.d)
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.d)
             },
             0x73 => { // LD (HL),E
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.e)
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.e)
             },
             0x74 => { // LD (HL),H
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.h)
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.h)
             },
             0x75 => { // LD (HL),L
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.l)
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.l)
             },
             0x76 => { // HALT
                 self.op_halt()
             },
             0x77 => { // LD (HL),A
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.a)
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.a)
             },
             0x78 => { // LD A,B
                 self.registers.a = CPU::op_load_8bit(self.registers.b)
@@ -585,7 +583,7 @@ impl CPU {
                 self.registers.a = CPU::op_load_8bit(self.registers.l)
             },
             0x7E => { // LD A,(HL)
-                self.registers.a = CPU::op_load_8bit(self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize))
+                self.registers.a = CPU::op_load_8bit(memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize))
             },
             0x7F => { // LD A,A
                 self.registers.a = CPU::op_load_8bit(self.registers.a)
@@ -609,7 +607,7 @@ impl CPU {
                 self.op_add_8bit(self.registers.l, false)
             },
             0x86 => { // ADD A,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.op_add_8bit(get, false)
             },
             0x87 => { // ADD A,A
@@ -634,7 +632,7 @@ impl CPU {
                 self.op_add_8bit(self.registers.l, true)
             },
             0x8E => { // ADC A,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.op_add_8bit(get, true)
             },
             0x8F => { // ADC A,A
@@ -659,7 +657,7 @@ impl CPU {
                 self.op_sub_8bit(self.registers.l, false)
             },
             0x96 => { // SUB (HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.op_sub_8bit(get, false)
             },
             0x97 => { // SUB A
@@ -684,7 +682,7 @@ impl CPU {
                 self.op_sub_8bit(self.registers.l, true)
             },
             0x9E => { // SBC A,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.op_sub_8bit(get, true)
             },
             0x9F => { // SBC A,A
@@ -709,7 +707,7 @@ impl CPU {
                 self.op_and_8bit(self.registers.l)
             },
             0xA6 => { // AND (HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.op_and_8bit(get)
             },
             0xA7 => { // AND A
@@ -734,7 +732,7 @@ impl CPU {
                 self.op_xor_8bit(self.registers.l)
             },
             0xAE => { // XOR (HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.op_xor_8bit(get)
             },
             0xAF => { // XOR A
@@ -759,7 +757,7 @@ impl CPU {
                 self.op_or_8bit(self.registers.l)
             },
             0xB6 => { // OR (HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.op_or_8bit(get)
             },
             0xB7 => { // OR A
@@ -784,18 +782,18 @@ impl CPU {
                 self.op_compare_8bit(self.registers.l)
             },
             0xBE => { // CP (HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.op_compare_8bit(get)
             },
             0xBF => { // CP A
                 self.op_compare_8bit(self.registers.a)
             },
             0xC0 => { // RET NZ
-                self.op_return_if(JumpCondition::NotZero)
+                self.op_return_if(memory, JumpCondition::NotZero)
             },
             0xC1 => { // POP BC
-                self.registers.c = self.op_pop();
-                self.registers.b = self.op_pop();
+                self.registers.c = self.op_pop(memory);
+                self.registers.b = self.op_pop(memory);
             },
             0xC2 => { // JP NZ,a16
                 self.op_jump_if(arg, JumpCondition::NotZero)
@@ -804,102 +802,102 @@ impl CPU {
                 self.op_jump(arg)
             },
             0xC4 => { // CALL NZ,a16
-                self.op_call_if(JumpCondition::NotZero)
+                self.op_call_if(memory, JumpCondition::NotZero)
             },
             0xC5 => { // PUSH BC
-                self.op_push(self.registers.b);
-                self.op_push(self.registers.c);
+                self.op_push(memory, self.registers.b);
+                self.op_push(memory, self.registers.c);
             },
             0xC6 => { // ADD A,d8
                 self.op_add_8bit(arg as u8, false)
             },
             0xC7 => { // RST 00H
-                self.op_restart(0x00)
+                self.op_restart(memory, 0x00)
             },
             0xC8 => { // RET Z
-                self.op_return_if(JumpCondition::Zero)
+                self.op_return_if(memory, JumpCondition::Zero)
             },
             0xC9 => { // RET
-                self.op_return()
+                self.op_return(memory)
             },
             0xCA => { // JP Z,a16
                 self.op_jump_if(arg, JumpCondition::Zero)
             },
             0xCB => { // PREFIX CB
-                self.op_match_cb(opcode2.unwrap(), arg)
+                self.op_match_cb(memory, opcode2.unwrap(), arg)
             },
             0xCC => { // CALL Z,a16
-                self.op_call_if(JumpCondition::Zero)
+                self.op_call_if(memory, JumpCondition::Zero)
             },
             0xCD => { // CALL a16
-                self.op_call()
+                self.op_call(memory)
             },
             0xCE => { // ADC A,d8
                 self.op_add_8bit(arg as u8, true)
             },
             0xCF => { // RST 08H
-                self.op_restart(0x08)
+                self.op_restart(memory, 0x08)
             },
             0xD0 => { // RET NC
-                self.op_return_if(JumpCondition::NotCarry)
+                self.op_return_if(memory, JumpCondition::NotCarry)
             },
             0xD1 => { // POP DE
-                self.registers.e = self.op_pop();
-                self.registers.d = self.op_pop();
+                self.registers.e = self.op_pop(memory);
+                self.registers.d = self.op_pop(memory);
             },
             0xD2 => { // JP NC,a16
                 self.op_jump_if(arg, JumpCondition::NotCarry)
             },
             0xD4 => { // CALL NC,a16
-                self.op_call_if(JumpCondition::NotCarry)
+                self.op_call_if(memory, JumpCondition::NotCarry)
             },
             0xD5 => { // PUSH DE
-                self.op_push(self.registers.d);
-                self.op_push(self.registers.e);
+                self.op_push(memory, self.registers.d);
+                self.op_push(memory, self.registers.e);
             },
             0xD6 => { // SUB d8
                 self.op_sub_8bit(arg as u8, false)
             },
             0xD7 => { // RST 10H
-                self.op_restart(0x10)
+                self.op_restart(memory, 0x10)
             },
             0xD8 => { // RET C
-                self.op_return_if(JumpCondition::Carry)
+                self.op_return_if(memory, JumpCondition::Carry)
             },
             0xD9 => { // RETI
-                self.op_return_ei()
+                self.op_return_ei(memory)
             },
             0xDA => { // JP C,a16
                 self.op_jump_if(arg, JumpCondition::Carry)
             },
             0xDC => { // CALL C,a16
-                self.op_call_if(JumpCondition::Carry)
+                self.op_call_if(memory, JumpCondition::Carry)
             },
             0xDE => { // SBC A,d8
                 self.op_sub_8bit(arg as u8, true)
             },
             0xDF => { // RST 18H
-                self.op_restart(0x18)
+                self.op_restart(memory, 0x18)
             }
             0xE0 => { // LDH (a8),A
-                self.mem.set_memory((0xFF00 + (arg as u8) as u16) as usize, self.registers.a)
+                memory.set_memory((0xFF00 + (arg as u8) as u16) as usize, self.registers.a)
             },
             0xE1 => { // POP HL
-                self.registers.l = self.op_pop();
-                self.registers.h = self.op_pop();
+                self.registers.l = self.op_pop(memory);
+                self.registers.h = self.op_pop(memory);
             },
             0xE2 => { // LD (C),A
-                self.mem.set_memory(((0xFF00 as u16) + self.registers.c as u16) as usize, self.registers.a)
+                memory.set_memory(((0xFF00 as u16) + self.registers.c as u16) as usize, self.registers.a)
             },
             0xE5 => { // PUSH HL
-                self.op_push(self.registers.h);
-                self.op_push(self.registers.l);
+                self.op_push(memory, self.registers.h);
+                self.op_push(memory, self.registers.l);
             },
             0xE6 => { // AND d8
                 self.op_and_8bit(arg as u8)
             },
             0xE7 => { // RST 20H
-                self.op_restart(0x20)
+                self.op_restart(memory, 0x20)
             },
             0xE8 => { // ADD SP,r8
                 self.op_add_16bit(RegistersEnum::sp, arg)
@@ -908,36 +906,36 @@ impl CPU {
                 self.op_jump(Registers::concat_registers(self.registers.h, self.registers.l))
             },
             0xEA => { // LD (a16),A
-                self.mem.set_memory(CPU::swap_endian(arg) as usize, self.registers.a)
+                memory.set_memory(CPU::swap_endian(arg) as usize, self.registers.a)
             },
             0xEE => { // XOR d8
                 self.op_xor_8bit(arg as u8)
             },
             0xEF => { // RST 28H
-                self.op_restart(0x28)
+                self.op_restart(memory, 0x28)
             },
             0xF0 => { // LDH A,(a8)
-                self.registers.a = CPU::op_load_8bit(self.mem.get_byte((0xFF00 + (arg as u8) as u16) as usize))
+                self.registers.a = CPU::op_load_8bit(memory.get_byte((0xFF00 + (arg as u8) as u16) as usize))
             },
             0xF1 => { // POP AF
-                self.registers.f = self.op_pop();
-                self.registers.a = self.op_pop();
+                self.registers.f = self.op_pop(memory);
+                self.registers.a = self.op_pop(memory);
             },
             0xF2 => { // LD A,(C)
-                self.registers.a = CPU::op_load_8bit(self.mem.get_byte((0xFF00 + (self.registers.c) as u16) as usize))
+                self.registers.a = CPU::op_load_8bit(memory.get_byte((0xFF00 + (self.registers.c) as u16) as usize))
             },
             0xF3 => { // DI
-                self.op_disable_interrupts()
+                self.op_disable_interrupts(memory)
             },
             0xF5 => { // PUSH AF
-                self.op_push(self.registers.a);
-                self.op_push(self.registers.f);
+                self.op_push(memory, self.registers.a);
+                self.op_push(memory, self.registers.f);
             },
             0xF6 => { // OR d8
                 self.op_or_8bit(arg as u8)
             },
             0xF7 => { // RST 30H
-                self.op_restart(0x30)
+                self.op_restart(memory, 0x30)
             },
             0xF8 => { // LD HL,SP+r8
                 let sp_new = self.registers.sp + (arg << 8);
@@ -965,16 +963,16 @@ impl CPU {
                 self.registers.sp = Registers::concat_registers(self.registers.h, self.registers.l)
             },
             0xFA => { // LD A,(a16)
-                self.registers.a = CPU::op_load_8bit(self.mem.get_byte(CPU::swap_endian(arg) as usize))
+                self.registers.a = CPU::op_load_8bit(memory.get_byte(CPU::swap_endian(arg) as usize))
             },
             0xFB => { // EI
-                self.op_enable_interrupts()
+                self.op_enable_interrupts(memory)
             },
             0xFE => { // CP d8
                 self.op_compare_8bit(arg as u8)
             },
             0xFF => { // RST 38H
-                self.op_restart(0x38)
+                self.op_restart(memory, 0x38)
             },
             _ => { // Unknown OPcode
                 panic!("Unknown opcode {}", opcode)
@@ -983,7 +981,7 @@ impl CPU {
     }
 
     // opcode = opcode in CB table, arg = literal value
-    pub fn op_match_cb(&mut self, opcode:u8, arg:u16) {
+    pub fn op_match_cb(&mut self, memory:&mut MemMap, opcode:u8, arg:u16) {
         match opcode {
             0x00 => { // RLC B
                 self.registers.b = self.op_rotate_left_carry(self.registers.b, arg as u8)
@@ -1004,9 +1002,9 @@ impl CPU {
                 self.registers.l = self.op_rotate_left_carry(self.registers.l, arg as u8)
             },
             0x06 => { // RLC (HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 let val = self.op_rotate_left_carry(get, arg as u8);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
             },
             0x07 => { // RLC A
                 self.registers.a = self.op_rotate_left_carry(self.registers.a, arg as u8)
@@ -1030,9 +1028,9 @@ impl CPU {
                 self.registers.l = self.op_rotate_right_carry(self.registers.l, arg as u8)
             },
             0x0E => { // RRC (HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 let val = self.op_rotate_right_carry(get, arg as u8);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
             },
             0x0F => { // RRC A
                 self.registers.a = self.op_rotate_right_carry(self.registers.a, arg as u8)
@@ -1056,9 +1054,9 @@ impl CPU {
                 self.registers.l = self.op_rotate_left(self.registers.l, arg as u8)
             },
             0x16 => { // RL (HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 let val = self.op_rotate_left(get, arg as u8);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
             },
             0x17 => { // RL A
                 self.registers.a = self.op_rotate_left(self.registers.a, arg as u8)
@@ -1082,9 +1080,9 @@ impl CPU {
                 self.registers.l = self.op_rotate_right(self.registers.l, arg as u8)
             },
             0x1E => { // RR (HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 let val = self.op_rotate_right(get, arg as u8);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
             },
             0x1F => { // RR A
                 self.registers.a = self.op_rotate_right(self.registers.a, arg as u8)
@@ -1108,9 +1106,9 @@ impl CPU {
                 self.registers.l = self.op_shift_left_carry(self.registers.l, arg as u8)
             },
             0x26 => { // SLA (HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 let val = self.op_shift_left_carry(get, arg as u8);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
             },
             0x27 => { // SLA A
                 self.registers.a = self.op_shift_left_carry(self.registers.a, arg as u8)
@@ -1134,9 +1132,9 @@ impl CPU {
                 self.registers.l = self.op_shift_righta_carry(self.registers.l, arg as u8)
             },
             0x2E => { // SRA (HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 let val = self.op_shift_righta_carry(get, arg as u8);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
             },
             0x2F => { // SRA A
                 self.registers.a = self.op_shift_righta_carry(self.registers.a, arg as u8)
@@ -1160,9 +1158,9 @@ impl CPU {
                 self.registers.l = self.op_swap(self.registers.l)
             },
             0x36 => { // SWAP (HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 let val = self.op_swap(get);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
             },
             0x37 => { // SWAP A
                 self.registers.a = self.op_swap(self.registers.a);
@@ -1186,9 +1184,9 @@ impl CPU {
                 self.registers.l = self.op_shift_rightl_carry(self.registers.l, arg as u8)
             },
             0x3E => { // SRL (HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 let val = self.op_shift_rightl_carry(get, arg as u8);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val)
             },
             0x3F => { // SRL A
                 self.registers.a = self.op_shift_rightl_carry(self.registers.a, arg as u8)
@@ -1212,7 +1210,7 @@ impl CPU {
                 self.op_test_bit(self.registers.l, 0)
             },
             0x46 => { // BIT 0,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.op_test_bit(get, 0)
             },
             0x47 => { // BIT 0,A
@@ -1237,7 +1235,7 @@ impl CPU {
                 self.op_test_bit(self.registers.l, 1)
             },
             0x4E => { // BIT 1,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.op_test_bit(get, 1)
             },
             0x4F => { // BIT 1,A
@@ -1262,7 +1260,7 @@ impl CPU {
                 self.op_test_bit(self.registers.l, 2)
             },
             0x56 => { // BIT 2,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.op_test_bit(get, 2)
             },
             0x57 => { // BIT 2,A
@@ -1287,7 +1285,7 @@ impl CPU {
                 self.op_test_bit(self.registers.l, 3)
             },
             0x5E => { // BIT 3,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.op_test_bit(get, 3)
             },
             0x5F => { // BIT 3,A
@@ -1312,7 +1310,7 @@ impl CPU {
                 self.op_test_bit(self.registers.l, 4)
             },
             0x66 => { // BIT 4,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.op_test_bit(get, 4)
             },
             0x67 => { // BIT 4,A
@@ -1337,7 +1335,7 @@ impl CPU {
                 self.op_test_bit(self.registers.l, 5)
             },
             0x6E => { // BIT 5,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.op_test_bit(get, 5)
             },
             0x6F => { // BIT 5,A
@@ -1362,7 +1360,7 @@ impl CPU {
                 self.op_test_bit(self.registers.l, 6)
             },
             0x76 => { // BIT 6,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.op_test_bit(get, 6)
             },
             0x77 => { // BIT 6,A
@@ -1387,7 +1385,7 @@ impl CPU {
                 self.op_test_bit(self.registers.l, 7)
             },
             0x7E => { // BIT 7,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 self.op_test_bit(get, 7)
             },
             0x7F => { // BIT 7,A
@@ -1412,8 +1410,8 @@ impl CPU {
                 self.registers.l &= !CPU::op_bit(0)
             },
             0x86 => { // RES 0,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(0))
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(0))
             },
             0x87 => { // RES 0,A
                 self.registers.a &= !CPU::op_bit(0)
@@ -1437,8 +1435,8 @@ impl CPU {
                 self.registers.l &= !CPU::op_bit(1)
             },
             0x8E => { // RES 1,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(1))
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(1))
             },
             0x8F => { // RES 1,A
                 self.registers.a &= !CPU::op_bit(1)
@@ -1462,8 +1460,8 @@ impl CPU {
                 self.registers.l &= !CPU::op_bit(2)
             },
             0x96 => { // RES 2,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(2))
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(2))
             },
             0x97 => { // RES 2,A
                 self.registers.a &= !CPU::op_bit(2)
@@ -1487,8 +1485,8 @@ impl CPU {
                 self.registers.l &= !CPU::op_bit(3)
             },
             0x9E => { // RES 3,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(3))
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(3))
             },
             0x9F => { // RES 3,A
                 self.registers.a &= !CPU::op_bit(3)
@@ -1512,8 +1510,8 @@ impl CPU {
                 self.registers.l &= !CPU::op_bit(4)
             },
             0xA6 => { // RES 4,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(4))
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(4))
             },
             0xA7 => { // RES 4,A
                 self.registers.a &= !CPU::op_bit(4)
@@ -1537,8 +1535,8 @@ impl CPU {
                 self.registers.l &= !CPU::op_bit(5)
             },
             0xAE => { // RES 5,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(5))
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(5))
             },
             0xAF => { // RES 5,A
                 self.registers.a &= !CPU::op_bit(5)
@@ -1562,8 +1560,8 @@ impl CPU {
                 self.registers.l &= !CPU::op_bit(6)
             },
             0xB6 => { // RES 6,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(6))
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(6))
             },
             0xB7 => { // RES 6,A
                 self.registers.a &= !CPU::op_bit(6)
@@ -1587,8 +1585,8 @@ impl CPU {
                 self.registers.l &= !CPU::op_bit(7)
             },
             0xBE => { // RES 7,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(7))
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(7))
             },
             0xBF => { // RES 7,A
                 self.registers.a &= !CPU::op_bit(7)
@@ -1612,8 +1610,8 @@ impl CPU {
                 self.registers.l |= CPU::op_bit(0)
             },
             0xC6 => { // SET 0,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(0))
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(0))
             },
             0xC7 => { // SET 0,A
                 self.registers.a |= CPU::op_bit(0)
@@ -1637,8 +1635,8 @@ impl CPU {
                 self.registers.l |= CPU::op_bit(1)
             },
             0xCE => { // SET 1,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(1))
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(1))
             },
             0xCF => { // SET 1,A
                 self.registers.a |= CPU::op_bit(1)
@@ -1662,8 +1660,8 @@ impl CPU {
                 self.registers.l |= CPU::op_bit(2)
             },
             0xD6 => { // SET 2,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(2))
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(2))
             },
             0xD7 => { // SET 2,A
                 self.registers.a |= CPU::op_bit(2)
@@ -1687,8 +1685,8 @@ impl CPU {
                 self.registers.l |= CPU::op_bit(3)
             },
             0xDE => { // SET 3,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(3))
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(3))
             },
             0xDF => { // SET 3,A
                 self.registers.a |= CPU::op_bit(3)
@@ -1712,8 +1710,8 @@ impl CPU {
                 self.registers.l |= CPU::op_bit(4)
             },
             0xE6 => { // SET 4,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(4))
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(4))
             },
             0xE7 => { // SET 4,A
                 self.registers.a |= CPU::op_bit(4)
@@ -1737,8 +1735,8 @@ impl CPU {
                 self.registers.l |= CPU::op_bit(5)
             },
             0xEE => { // SET 5,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(5))
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(5))
             },
             0xEF => { // SET 5,A
                 self.registers.a |= CPU::op_bit(5)
@@ -1762,8 +1760,8 @@ impl CPU {
                 self.registers.l |= CPU::op_bit(6)
             },
             0xF6 => { // SET 6,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(6))
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(6))
             },
             0xF7 => { // SET 6,A
                 self.registers.a |= CPU::op_bit(6)
@@ -1787,8 +1785,8 @@ impl CPU {
                 self.registers.l |= CPU::op_bit(7)
             },
             0xFE => { // SET 7,(HL)
-                let get = self.mem.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                self.mem.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(7))
+                let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
+                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(7))
             },
             0xFF => { // SET 7,A
                 self.registers.a |= CPU::op_bit(7)
@@ -1828,13 +1826,13 @@ impl CPU {
         }
     }
 
-    pub fn op_push(&mut self, val:u8) {
+    pub fn op_push(&mut self, memory:&mut MemMap, val:u8) {
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        self.mem.set_memory(CPU::swap_endian(self.registers.sp) as usize, val);
+        memory.set_memory(CPU::swap_endian(self.registers.sp) as usize, val);
     }
 
-    pub fn op_pop(&mut self) -> u8 {
-        let ret = self.mem.get_byte(CPU::swap_endian(self.registers.sp) as usize);
+    pub fn op_pop(&mut self, memory:&mut MemMap) -> u8 {
+        let ret = memory.get_byte(CPU::swap_endian(self.registers.sp) as usize);
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
         ret
     }
@@ -2197,14 +2195,14 @@ impl CPU {
         self.stop = true
     }
 
-    pub fn op_disable_interrupts(&mut self) {
+    pub fn op_disable_interrupts(&mut self, memory:&mut MemMap) {
         self.ime = false;
-        self.mem.set_memory(memory::IE as usize, 0)
+        memory.set_memory(crate::memory::IE as usize, 0)
     }
 
-    pub fn op_enable_interrupts(&mut self) {
+    pub fn op_enable_interrupts(&mut self, memory:&mut MemMap) {
         self.ime = true;
-        self.mem.set_memory(memory::IE as usize, memory::IE_ALL)
+        memory.set_memory(crate::memory::IE as usize, crate::memory::IE_ALL)
     }
 
     pub fn op_rotate_left(&mut self, reg:u8, bits:u8) -> u8 {
@@ -2469,14 +2467,14 @@ impl CPU {
         }
     }
 
-    pub fn op_call(&mut self) {
+    pub fn op_call(&mut self, memory:&mut MemMap) {
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        self.mem.set_memory(CPU::swap_endian(self.registers.sp) as usize, (self.registers.pc >> 8) as u8);
+        memory.set_memory(CPU::swap_endian(self.registers.sp) as usize, (self.registers.pc >> 8) as u8);
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        self.mem.set_memory(CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
+        memory.set_memory(CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
     }
 
-    pub fn op_call_if(&mut self, cond:JumpCondition) {
+    pub fn op_call_if(&mut self, memory:&mut MemMap, cond:JumpCondition) {
         let mut call = false;
 
         match cond {
@@ -2504,27 +2502,27 @@ impl CPU {
 
         if call {
             self.registers.sp = CPU::dec_16bit(self.registers.sp);
-            self.mem.set_memory(CPU::swap_endian(self.registers.sp) as usize, (self.registers.pc >> 8) as u8);
+            memory.set_memory(CPU::swap_endian(self.registers.sp) as usize, (self.registers.pc >> 8) as u8);
             self.registers.sp = CPU::dec_16bit(self.registers.sp);
-            self.mem.set_memory(CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
+            memory.set_memory(CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
         }
     }
 
-    pub fn op_restart(&mut self, offset:u8) {
+    pub fn op_restart(&mut self, memory:&mut MemMap, offset:u8) {
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        self.mem.set_memory(CPU::swap_endian(self.registers.sp) as usize, (self.registers.pc >> 8) as u8);
+        memory.set_memory(CPU::swap_endian(self.registers.sp) as usize, (self.registers.pc >> 8) as u8);
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        self.mem.set_memory(CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
+        memory.set_memory(CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
         self.registers.pc = (offset as u16) << 8;
     }
 
-    pub fn op_return(&mut self) {
-        self.registers.pc = self.mem.get_word(CPU::swap_endian(self.registers.sp) as usize);
+    pub fn op_return(&mut self, memory:&mut MemMap) {
+        self.registers.pc = memory.get_word(CPU::swap_endian(self.registers.sp) as usize);
         self.registers.sp = CPU::inc_16bit(self.registers.sp);
         self.registers.sp = CPU::inc_16bit(self.registers.sp);
     }
 
-    pub fn op_return_if(&mut self, cond:JumpCondition) {
+    pub fn op_return_if(&mut self, memory:&mut MemMap, cond:JumpCondition) {
         let mut ret = false;
 
         match cond {
@@ -2551,18 +2549,18 @@ impl CPU {
         }
 
         if ret {
-            self.registers.pc = self.mem.get_word(CPU::swap_endian(self.registers.sp) as usize);
+            self.registers.pc = memory.get_word(CPU::swap_endian(self.registers.sp) as usize);
             self.registers.sp = CPU::inc_16bit(self.registers.sp);
             self.registers.sp = CPU::inc_16bit(self.registers.sp);
         }
     }
 
-    pub fn op_return_ei(&mut self) {
-        self.registers.pc = self.mem.get_word(CPU::swap_endian(self.registers.sp) as usize);
+    pub fn op_return_ei(&mut self, memory:&mut MemMap) {
+        self.registers.pc = memory.get_word(CPU::swap_endian(self.registers.sp) as usize);
         self.registers.sp = CPU::inc_16bit(self.registers.sp);
         self.registers.sp = CPU::inc_16bit(self.registers.sp);
         self.ime = true;
-        self.mem.set_memory(memory::IE as usize, memory::IE_ALL)
+        memory.set_memory(crate::memory::IE as usize, crate::memory::IE_ALL)
     }
 }
 
