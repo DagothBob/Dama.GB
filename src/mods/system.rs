@@ -8,10 +8,20 @@ use sdl2::keyboard::Keycode;
 
 use crate::cpu;
 use crate::memory;
+use crate::memory::MemMap;
+use crate::display;
+
+///////////////////
+// System struct //
+///////////////////
+pub const SCREEN_WIDTH:u32 = 640;
+pub const SCREEN_HEIGHT:u32 = 576;
 
 pub struct System {
     pub gb_cpu:cpu::CPU,
     pub gb_memory:memory::MemMap,
+    pub gb_lcd:display::LCD,
+    pub global_timer:Timer,
     pub sdl_context:sdl2::Sdl,
     pub quit:bool
 }
@@ -21,6 +31,8 @@ impl System {
         System {
             gb_cpu:cpu::CPU::init(),
             gb_memory:memory::MemMap::init(),
+            gb_lcd:display::LCD::init(),
+            global_timer:Timer::init(),
             sdl_context:sdl2::init().unwrap(),
             quit:false
         }
@@ -28,7 +40,7 @@ impl System {
 
     pub fn system_loop(&mut self) {
         let video_subsystem = self.sdl_context.video().unwrap();
-        let window = video_subsystem.window("Dama-GB", 640, 576).position_centered().build().unwrap();
+        let window = video_subsystem.window("Dama-GB", SCREEN_WIDTH, SCREEN_HEIGHT).position_centered().build().unwrap();
         let mut canvas = window.into_canvas().build().unwrap();
 
         canvas.set_draw_color(Color::RGB(0, 0, 0));
@@ -41,14 +53,14 @@ impl System {
             // Halted/stopped and interrupts enabled means CPU will halt instruction flow
             // Else, turn halt/stop flag off
             if !self.gb_cpu.halt && !self.gb_cpu.stop && self.gb_cpu.ime {
-                self.gb_cpu.cpu_cycle(&mut self.gb_memory);
+                self.gb_cpu.cpu_cycle(&mut self.gb_memory, &mut self.global_timer);
             }
             else if (self.gb_cpu.halt || self.gb_cpu.stop) && !self.gb_cpu.ime {
                 self.gb_cpu.halt = false;
                 self.gb_cpu.stop = false;
             }
 
-            self.interrupt_handler();
+            self.interrupt_handler(); // Should be at the end of the loop
         }
     }
 
@@ -164,6 +176,29 @@ impl System {
     }
 
     pub fn lcdc_compare(&mut self) {
-        
+        // TODO
+    }
+}
+
+////////////////////////////////////////////////////
+// Timer struct                                   //
+//                                                //
+// Per frame:                                     //
+// 70224hz (35112 PPU cycles, 17556 CPU cycles)   //
+// 154 scanlines                                  //
+////////////////////////////////////////////////////
+pub struct Timer {
+    pub scanline_hz:u64
+}
+
+impl Timer {
+    pub fn init() -> Timer {
+        Timer {
+            scanline_hz:0
+        }
+    }
+
+    pub fn get_scanlines(mem:&mut MemMap) -> u8 {
+        mem.get_byte(memory::LY as usize)
     }
 }

@@ -2,10 +2,9 @@
 
 use crate::memory;
 
-pub struct MemMap {
-    pub mem:[u8;0x10000]
-}
-
+///////////////////
+// Memory struct //
+///////////////////
 pub const VBLN:u16 = 0x0040; // V-blank interrupt vector
 pub const LSTT:u16 = 0x0048; // LCD Stat interrupt vector
 pub const TIMR:u16 = 0x0050; // Timer interrupt vector
@@ -64,8 +63,10 @@ pub const LCDC:u16 = 0xFF40; // LCD control
     pub const LCDC_WDS:u8 = 0b0100_0000; // Window Tile Map Display Select
     pub const LCDC_ENA:u8 = 0b1000_0000; // LCD Display Enable
 pub const STAT:u16 = 0xFF41; // LCDC status
-    pub const STAT_MF0:u8 = 0b0000_0001; // 00 - H-Blank       | 01 - V-Blank
-    pub const STAT_MF1:u8 = 0b0000_0010; // 02 - Searching OAM | 03 - Transfer data to LCD
+    pub const STAT_MFH:u8 = 0b0000_0000; // Mode 0: MF = H-Blank
+    pub const STAT_MFV:u8 = 0b0000_0001; // Mode 1: MF = V-Blank
+    pub const STAT_MFO:u8 = 0b0000_0010; // Mode 2: MF = OAM Search
+    pub const STAT_MFT:u8 = 0b0000_0011; // Mode 3: MF = Transfer to LCD
     pub const STAT_COF:u8 = 0b0000_0100; // Coincidence Flag LY/LYC: 0 - different, 1 - equal
     pub const STAT_HBI:u8 = 0b0000_1000; // H-Blank Interrupt
     pub const STAT_VBI:u8 = 0b0001_0000; // V-Blank Interrupt
@@ -88,6 +89,10 @@ pub const IE  :u16 = 0xFFFF; // Interrupt enable
     pub const IE_SRIAL:u8 = 0b0000_1000; // Serial complete
     pub const IE_JYPAD:u8 = 0b0001_0000; // Joypad event
     pub const IE_ALL  :u8 = 0b0001_1111;
+
+pub struct MemMap {
+    pub mem:[u8;0x10000]
+}
 
 impl MemMap {
     pub fn init() -> MemMap {
@@ -125,17 +130,13 @@ impl MemMap {
         if addr == DIV as usize {
             self.mem[addr] = 0
         }
-        // Check if LCD STAT mode prohibits writing to VRAM or OAM
-        else if addr >= 0x8000 && addr <= 0x9FFF {
-            // LCD STAT is not in mode 3 and trying to write to VRAM/OAM OR
-            // LCD STAT is not in mode 2 and trying to write to OAM
-            if (((self.get_byte(memory::STAT as usize) & memory::STAT_MF0) != 1) &&
-                ((self.get_byte(memory::STAT as usize) & memory::STAT_MF1) != 2)) ||
-               (((self.get_byte(memory::STAT as usize) & memory::STAT_MF0) != 0) &&
-                ((self.get_byte(memory::STAT as usize) & memory::STAT_MF1) != 2) &&
-                addr >= 0xFE00 && addr <= 0xFE9F) {
-                self.mem[addr] = val
-            }
+        // LCD STAT is not in mode 3 and trying to write to VRAM/OAM or
+        // LCD STAT is not in mode 2 and trying to write to OAM
+        else if (((self.get_byte(memory::STAT as usize) & memory::STAT_MFT) == 0) && 
+                  addr >= 0x8000 && addr <= 0x9FFF) ||
+                (((self.get_byte(memory::STAT as usize) & memory::STAT_MFO) == 0) && 
+                  addr >= 0xFE00 && addr <= 0xFE9F) {
+            self.mem[addr] = val
         }
         else {
             // Echo RAM emulation
@@ -150,10 +151,20 @@ impl MemMap {
     }
 
     pub fn get_byte(&mut self, addr:usize) -> u8 {
-        self.mem[addr]
+        // LCD STAT is in mode 3 and trying to write to VRAM/OAM or
+        // LCD STAT is in mode 2 and trying to write to OAM
+        if (((self.mem[memory::STAT as usize] & memory::STAT_MFT) > 0) && 
+              addr >= 0x8000 && addr <= 0x9FFF) ||
+           (((self.mem[memory::STAT as usize] & memory::STAT_MFO) > 0) && 
+              addr >= 0xFE00 && addr <= 0xFE9F) {
+            0xFF
+        }
+        else {
+            self.mem[addr]
+        }
     }
 
     pub fn get_word(&mut self, addr:usize) -> u16 {
-        ((self.mem[addr] as u16) << 8) | self.mem[addr + 1] as u16
+        ((self.get_byte(addr) as u16) << 8) | self.get_byte(addr + 1) as u16
     }
 }
