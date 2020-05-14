@@ -47,20 +47,47 @@ impl System {
         canvas.clear();
         canvas.present();
 
+        // Per-frame loop
         while !self.quit {
+            let current_scanline = Timer::get_scanlines(&mut self.gb_memory);
             self.handle_sdl_events(self.sdl_context.event_pump().unwrap());
 
-            // Halted/stopped and interrupts enabled means CPU will halt instruction flow
-            // Else, turn halt/stop flag off
-            if !self.gb_cpu.halt && !self.gb_cpu.stop && self.gb_cpu.ime {
-                self.gb_cpu.cpu_cycle(&mut self.gb_memory, &mut self.global_timer);
-            }
-            else if (self.gb_cpu.halt || self.gb_cpu.stop) && !self.gb_cpu.ime {
-                self.gb_cpu.halt = false;
-                self.gb_cpu.stop = false;
-            }
+            // Per-scanline loop
+            while Timer::get_scanlines(&mut self.gb_memory) == current_scanline {
+                self.check_lyc_interrupt();
 
-            self.interrupt_handler(); // Should be at the end of the loop
+                // Halted/stopped and interrupts enabled means CPU will halt instruction flow
+                // Else, turn halt/stop flag off
+                if !self.gb_cpu.halt && !self.gb_cpu.stop && self.gb_cpu.ime {
+                    self.gb_cpu.cpu_cycle(&mut self.gb_memory, &mut self.global_timer);
+                }
+                else if (self.gb_cpu.halt || self.gb_cpu.stop) && !self.gb_cpu.ime {
+                    self.gb_cpu.halt = false;
+                    self.gb_cpu.stop = false;
+                }
+
+                // End of scanline
+                if self.global_timer.scanline_hz > HZ_PER_SCANLINE {
+                    let ly = Timer::get_scanlines(&mut self.gb_memory);
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::LY as usize, ly + 1);
+                }
+                self.interrupt_handler(); // Should be at the end of the loop
+            }
+        }
+    }
+
+    pub fn check_lyc_interrupt(&mut self) {
+        // Checking for LYC=LY/LYC<>LY coincidence interrupt
+        if (self.gb_memory.get_byte(memory::STAT as usize) & memory::STAT_COI) > 0 {
+            // LYC=LY flag is set/unset in STAT (and, or) LYC=/!=LY, respectively
+            if (((self.gb_memory.get_byte(memory::STAT as usize) & memory::STAT_COF) > 0) &&
+                (self.gb_memory.get_byte(memory::LYC as usize) == Timer::get_scanlines(&mut self.gb_memory))) ||
+                (((self.gb_memory.get_byte(memory::STAT as usize) & memory::STAT_COF) == 0) &&
+                (self.gb_memory.get_byte(memory::LYC as usize) != Timer::get_scanlines(&mut self.gb_memory))) 
+            {
+                let get_if = self.gb_memory.get_byte(memory::IF as usize);
+                self.gb_memory.set_memory(&mut self.global_timer, memory::IF as usize, get_if | memory::IF_LSTAT);
+            }
         }
     }
 
@@ -69,53 +96,53 @@ impl System {
         let int_f = self.gb_memory.get_byte(memory::IF as usize);
 
         if self.gb_cpu.ime {
-            self.gb_cpu.op_call(&mut self.gb_memory); // Push PC onto stack
+            self.gb_cpu.op_call(&mut self.global_timer, &mut self.gb_memory); // Push PC onto stack
 
             // Check that interrupt-enable and appropriate interrupt flag is set
             // Ordered how they are precedented on GB hardware
             if (int_e & memory::IE_VBLNK) == memory::IE_VBLNK &&
                (int_f & memory::IF_VBLNK) == memory::IF_VBLNK {
-                self.gb_memory.set_memory(memory::IF as usize, int_f & !memory::IF_VBLNK);
+                self.gb_memory.set_memory(&mut self.global_timer, memory::IF as usize, int_f & !memory::IF_VBLNK);
                 self.gb_cpu.ime = false;
                 self.gb_cpu.halt = false;
                 self.gb_cpu.stop = false;
-                self.gb_cpu.registers.pc = memory::VBLN;
+                self.gb_cpu.registers.pc = memory::VBLNK_IV;
                 memory::IF_VBLNK
             }
             else if (int_e & memory::IE_LSTAT) == memory::IE_LSTAT &&
                     (int_f & memory::IF_LSTAT) == memory::IF_LSTAT {
-                self.gb_memory.set_memory(memory::IF as usize, int_f & !memory::IF_LSTAT);
+                self.gb_memory.set_memory(&mut self.global_timer, memory::IF as usize, int_f & !memory::IF_LSTAT);
                 self.gb_cpu.ime = false;
                 self.gb_cpu.halt = false;
                 self.gb_cpu.stop = false;
-                self.gb_cpu.registers.pc = memory::LSTT;
+                self.gb_cpu.registers.pc = memory::LSTAT_IV;
                 memory::IF_LSTAT
             }
             else if (int_e & memory::IE_TIMER) == memory::IE_TIMER &&
                     (int_f & memory::IF_TIMER) == memory::IF_TIMER {
-                self.gb_memory.set_memory(memory::IF as usize, int_f & !memory::IF_TIMER);
+                self.gb_memory.set_memory(&mut self.global_timer, memory::IF as usize, int_f & !memory::IF_TIMER);
                 self.gb_cpu.ime = false;
                 self.gb_cpu.halt = false;
                 self.gb_cpu.stop = false;
-                self.gb_cpu.registers.pc = memory::TIMR;
+                self.gb_cpu.registers.pc = memory::TIMER_IV;
                 memory::IF_TIMER
             }
             else if (int_e & memory::IE_SRIAL) == memory::IE_SRIAL &&
                     (int_f & memory::IF_SRIAL) == memory::IF_SRIAL {
-                self.gb_memory.set_memory(memory::IF as usize, int_f & !memory::IF_SRIAL);
+                self.gb_memory.set_memory(&mut self.global_timer, memory::IF as usize, int_f & !memory::IF_SRIAL);
                 self.gb_cpu.ime = false;
                 self.gb_cpu.halt = false;
                 self.gb_cpu.stop = false;
-                self.gb_cpu.registers.pc = memory::SRAL;
+                self.gb_cpu.registers.pc = memory::SRIAL_IV;
                 memory::IF_SRIAL
             }
             else if (int_e & memory::IE_JYPAD) == memory::IE_JYPAD &&
                     (int_f & memory::IF_JYPAD) == memory::IF_JYPAD {
-                self.gb_memory.set_memory(memory::IF as usize, int_f & !memory::IF_JYPAD);
+                self.gb_memory.set_memory(&mut self.global_timer, memory::IF as usize, int_f & !memory::IF_JYPAD);
                 self.gb_cpu.ime = false;
                 self.gb_cpu.halt = false;
                 self.gb_cpu.stop = false;
-                self.gb_cpu.registers.pc = memory::JPAD;
+                self.gb_cpu.registers.pc = memory::JYPAD_IV;
                 memory::IF_JYPAD
             }
             else {
@@ -137,46 +164,42 @@ impl System {
                     self.quit = true
                 },
                 Event::KeyDown { keycode: Some(Keycode::Right), .. } => {
-                    self.gb_memory.set_memory(memory::P1 as usize, pad_state | memory::P1_RIGHT);
-                    self.gb_memory.set_memory(memory::IF as usize, int_f | memory::IF_JYPAD)
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::P1 as usize, pad_state | memory::P1_RIGHT);
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::IF as usize, int_f | memory::IF_JYPAD)
                 },
                 Event::KeyDown { keycode: Some(Keycode::Left), .. } => {
-                    self.gb_memory.set_memory(memory::P1 as usize, pad_state | memory::P1_LEFT);
-                    self.gb_memory.set_memory(memory::IF as usize, int_f | memory::IF_JYPAD)
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::P1 as usize, pad_state | memory::P1_LEFT);
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::IF as usize, int_f | memory::IF_JYPAD)
                 },
                 Event::KeyDown { keycode: Some(Keycode::Up), .. } => {
-                    self.gb_memory.set_memory(memory::P1 as usize, pad_state | memory::P1_UP);
-                    self.gb_memory.set_memory(memory::IF as usize, int_f | memory::IF_JYPAD)
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::P1 as usize, pad_state | memory::P1_UP);
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::IF as usize, int_f | memory::IF_JYPAD)
                 },
                 Event::KeyDown { keycode: Some(Keycode::Down), .. } => {
-                    self.gb_memory.set_memory(memory::P1 as usize, pad_state | memory::P1_DOWN);
-                    self.gb_memory.set_memory(memory::IF as usize, int_f | memory::IF_JYPAD)
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::P1 as usize, pad_state | memory::P1_DOWN);
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::IF as usize, int_f | memory::IF_JYPAD)
                 },
                 Event::KeyDown { keycode: Some(Keycode::Z), .. } => {
-                    self.gb_memory.set_memory(memory::P1 as usize, pad_state | memory::P1_ABUTT);
-                    self.gb_memory.set_memory(memory::IF as usize, int_f | memory::IF_JYPAD)
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::P1 as usize, pad_state | memory::P1_ABUTT);
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::IF as usize, int_f | memory::IF_JYPAD)
                 },
                 Event::KeyDown { keycode: Some(Keycode::X), .. } => {
-                    self.gb_memory.set_memory(memory::P1 as usize, pad_state | memory::P1_BBUTT);
-                    self.gb_memory.set_memory(memory::IF as usize, int_f | memory::IF_JYPAD)
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::P1 as usize, pad_state | memory::P1_BBUTT);
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::IF as usize, int_f | memory::IF_JYPAD)
                 },
                 Event::KeyDown { keycode: Some(Keycode::C), .. } => {
-                    self.gb_memory.set_memory(memory::P1 as usize, pad_state | memory::P1_SELEC);
-                    self.gb_memory.set_memory(memory::IF as usize, int_f | memory::IF_JYPAD)
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::P1 as usize, pad_state | memory::P1_SELEC);
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::IF as usize, int_f | memory::IF_JYPAD)
                 },
                 Event::KeyDown { keycode: Some(Keycode::V), .. } => {
-                    self.gb_memory.set_memory(memory::P1 as usize, pad_state | memory::P1_START);
-                    self.gb_memory.set_memory(memory::IF as usize, int_f | memory::IF_JYPAD)
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::P1 as usize, pad_state | memory::P1_START);
+                    self.gb_memory.set_memory(&mut self.global_timer, memory::IF as usize, int_f | memory::IF_JYPAD)
                 },
                 _ => {
 
                 }
             }
         }
-    }
-
-    pub fn lcdc_compare(&mut self) {
-        // TODO
     }
 }
 
@@ -186,7 +209,16 @@ impl System {
 // Per frame:                                     //
 // 70224hz (35112 PPU cycles, 17556 CPU cycles)   //
 // 154 scanlines                                  //
+//                                                //
+// 456 clock cycles per scanline                  //
 ////////////////////////////////////////////////////
+pub const CLOCK:u64 = 4_194304;
+pub const HZ_PER_FRAME:u64 = 70224;
+pub const SCANLINES_PER_FRAME:u64 = 154;
+pub const HZ_PER_SCANLINE:u64 = 456;
+
+pub const VBLANK_SCANLINE:u64 = 144;
+
 pub struct Timer {
     pub scanline_hz:u64
 }

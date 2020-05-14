@@ -207,7 +207,7 @@ impl CPU {
                 timer.scanline_hz += 12
             },
             0x02 => { // LD (BC),A
-                memory.set_memory(Registers::concat_registers(self.registers.c, self.registers.b) as usize, self.registers.a);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.c, self.registers.b) as usize, self.registers.a);
                 timer.scanline_hz += 8
             },
             0x03 => { // INC BC
@@ -231,8 +231,8 @@ impl CPU {
                 timer.scanline_hz += 4
             },
             0x08 => { // LD (a16),SP
-                memory.set_memory(CPU::swap_endian(arg) as usize, self.registers.sp as u8);
-                memory.set_memory((CPU::swap_endian(arg) + 1) as usize, CPU::get_upper_byte(self.registers.sp));
+                memory.set_memory(timer, CPU::swap_endian(arg) as usize, self.registers.sp as u8);
+                memory.set_memory(timer, (CPU::swap_endian(arg) + 1) as usize, CPU::get_upper_byte(self.registers.sp));
                 timer.scanline_hz += 20
             },
             0x09 => { // ADD HL,BC
@@ -272,7 +272,7 @@ impl CPU {
                 timer.scanline_hz += 12
             },
             0x12 => { // LD (DE),A
-                memory.set_memory(Registers::concat_registers(self.registers.e, self.registers.d) as usize, self.registers.a);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.e, self.registers.d) as usize, self.registers.a);
                 timer.scanline_hz += 8
             },
             0x13 => { // INC DE
@@ -340,7 +340,7 @@ impl CPU {
                 timer.scanline_hz += 12
             },
             0x22 => { // LD (HL+),A
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.a);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.a);
                 self.inc_16bits(RegistersEnum::hl);
                 timer.scanline_hz += 8
             },
@@ -414,7 +414,7 @@ impl CPU {
                 timer.scanline_hz += 12
             },
             0x32 => { // LD (HL-),A
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.a);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.a);
                 self.dec_16bits(RegistersEnum::hl);
                 timer.scanline_hz += 8
             },
@@ -424,16 +424,16 @@ impl CPU {
             },
             0x34 => { // INC (HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get + 1);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get + 1);
                 timer.scanline_hz += 12
             },
             0x35 => { // DEC (HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get - 1);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get - 1);
                 timer.scanline_hz += 12
             },
             0x36 => { // LD (HL),d8
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, arg as u8);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, arg as u8);
                 timer.scanline_hz += 12
             },
             0x37 => { // SCF
@@ -670,27 +670,27 @@ impl CPU {
                 timer.scanline_hz += 4
             },
             0x70 => { // LD (HL),B
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.b);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.b);
                 timer.scanline_hz += 8
             },
             0x71 => { // LD (HL),C
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.c);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.c);
                 timer.scanline_hz += 8
             },
             0x72 => { // LD (HL),D
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.d);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.d);
                 timer.scanline_hz += 8
             },
             0x73 => { // LD (HL),E
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.e);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.e);
                 timer.scanline_hz += 8
             },
             0x74 => { // LD (HL),H
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.h);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.h);
                 timer.scanline_hz += 8
             },
             0x75 => { // LD (HL),L
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.l);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.l);
                 timer.scanline_hz += 8
             },
             0x76 => { // HALT
@@ -698,7 +698,7 @@ impl CPU {
                 timer.scanline_hz += 4
             },
             0x77 => { // LD (HL),A
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.a);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, self.registers.a);
                 timer.scanline_hz += 8
             },
             0x78 => { // LD A,B
@@ -1023,7 +1023,7 @@ impl CPU {
                 timer.scanline_hz += 16
             },
             0xC4 => { // CALL NZ,a16
-                if self.op_call_if(memory, JumpCondition::NotZero) {
+                if self.op_call_if(timer, memory, JumpCondition::NotZero) {
                     timer.scanline_hz += 24
                 }
                 else {
@@ -1031,8 +1031,8 @@ impl CPU {
                 }
             },
             0xC5 => { // PUSH BC
-                self.op_push(memory, self.registers.b);
-                self.op_push(memory, self.registers.c);
+                self.op_push(timer, memory, self.registers.b);
+                self.op_push(timer, memory, self.registers.c);
                 timer.scanline_hz += 16
             },
             0xC6 => { // ADD A,d8
@@ -1040,7 +1040,7 @@ impl CPU {
                 timer.scanline_hz += 8
             },
             0xC7 => { // RST 00H
-                self.op_restart(memory, 0x00);
+                self.op_restart(timer, memory, 0x00);
                 timer.scanline_hz += 16
             },
             0xC8 => { // RET Z
@@ -1068,7 +1068,7 @@ impl CPU {
                 timer.scanline_hz += 4
             },
             0xCC => { // CALL Z,a16
-                if self.op_call_if(memory, JumpCondition::Zero) {
+                if self.op_call_if(timer, memory, JumpCondition::Zero) {
                     timer.scanline_hz += 24
                 }
                 else {
@@ -1076,7 +1076,7 @@ impl CPU {
                 }
             },
             0xCD => { // CALL a16
-                self.op_call(memory);
+                self.op_call(timer, memory);
                 timer.scanline_hz += 24
             },
             0xCE => { // ADC A,d8
@@ -1084,7 +1084,7 @@ impl CPU {
                 timer.scanline_hz += 8
             },
             0xCF => { // RST 08H
-                self.op_restart(memory, 0x08);
+                self.op_restart(timer, memory, 0x08);
                 timer.scanline_hz += 16
             },
             0xD0 => { // RET NC
@@ -1109,7 +1109,7 @@ impl CPU {
                 }
             },
             0xD4 => { // CALL NC,a16
-                if self.op_call_if(memory, JumpCondition::NotCarry) {
+                if self.op_call_if(timer, memory, JumpCondition::NotCarry) {
                     timer.scanline_hz += 24
                 }
                 else {
@@ -1117,8 +1117,8 @@ impl CPU {
                 }
             },
             0xD5 => { // PUSH DE
-                self.op_push(memory, self.registers.d);
-                self.op_push(memory, self.registers.e);
+                self.op_push(timer, memory, self.registers.d);
+                self.op_push(timer, memory, self.registers.e);
                 timer.scanline_hz += 16
             },
             0xD6 => { // SUB d8
@@ -1126,7 +1126,7 @@ impl CPU {
                 timer.scanline_hz += 8
             },
             0xD7 => { // RST 10H
-                self.op_restart(memory, 0x10);
+                self.op_restart(timer, memory, 0x10);
                 timer.scanline_hz += 16
             },
             0xD8 => { // RET C
@@ -1138,7 +1138,7 @@ impl CPU {
                 }
             },
             0xD9 => { // RETI
-                self.op_return_ei(memory);
+                self.op_return_ei(timer, memory);
                 timer.scanline_hz += 16
             },
             0xDA => { // JP C,a16
@@ -1150,7 +1150,7 @@ impl CPU {
                 }
             },
             0xDC => { // CALL C,a16
-                if self.op_call_if(memory, JumpCondition::Carry) {
+                if self.op_call_if(timer, memory, JumpCondition::Carry) {
                     timer.scanline_hz += 24
                 }
                 else {
@@ -1162,11 +1162,11 @@ impl CPU {
                 timer.scanline_hz += 8
             },
             0xDF => { // RST 18H
-                self.op_restart(memory, 0x18);
+                self.op_restart(timer, memory, 0x18);
                 timer.scanline_hz += 16
             }
             0xE0 => { // LDH (a8),A
-                memory.set_memory((0xFF00 + (arg as u8) as u16) as usize, self.registers.a);
+                memory.set_memory(timer, (0xFF00 + (arg as u8) as u16) as usize, self.registers.a);
                 timer.scanline_hz += 12
             },
             0xE1 => { // POP HL
@@ -1175,12 +1175,12 @@ impl CPU {
                 timer.scanline_hz += 12
             },
             0xE2 => { // LD (C),A
-                memory.set_memory(((0xFF00 as u16) + self.registers.c as u16) as usize, self.registers.a);
+                memory.set_memory(timer, ((0xFF00 as u16) + self.registers.c as u16) as usize, self.registers.a);
                 timer.scanline_hz += 8
             },
             0xE5 => { // PUSH HL
-                self.op_push(memory, self.registers.h);
-                self.op_push(memory, self.registers.l);
+                self.op_push(timer, memory, self.registers.h);
+                self.op_push(timer, memory, self.registers.l);
                 timer.scanline_hz += 16
             },
             0xE6 => { // AND d8
@@ -1188,7 +1188,7 @@ impl CPU {
                 timer.scanline_hz += 8
             },
             0xE7 => { // RST 20H
-                self.op_restart(memory, 0x20);
+                self.op_restart(timer, memory, 0x20);
                 timer.scanline_hz += 16
             },
             0xE8 => { // ADD SP,r8
@@ -1200,7 +1200,7 @@ impl CPU {
                 timer.scanline_hz += 4
             },
             0xEA => { // LD (a16),A
-                memory.set_memory(CPU::swap_endian(arg) as usize, self.registers.a);
+                memory.set_memory(timer, CPU::swap_endian(arg) as usize, self.registers.a);
                 timer.scanline_hz += 16
             },
             0xEE => { // XOR d8
@@ -1208,7 +1208,7 @@ impl CPU {
                 timer.scanline_hz += 8
             },
             0xEF => { // RST 28H
-                self.op_restart(memory, 0x28);
+                self.op_restart(timer, memory, 0x28);
                 timer.scanline_hz += 16
             },
             0xF0 => { // LDH A,(a8)
@@ -1225,12 +1225,12 @@ impl CPU {
                 timer.scanline_hz += 8
             },
             0xF3 => { // DI
-                self.op_disable_interrupts(memory);
+                self.op_disable_interrupts(timer, memory);
                 timer.scanline_hz += 4
             },
             0xF5 => { // PUSH AF
-                self.op_push(memory, self.registers.a);
-                self.op_push(memory, self.registers.f);
+                self.op_push(timer, memory, self.registers.a);
+                self.op_push(timer, memory, self.registers.f);
                 timer.scanline_hz += 16
             },
             0xF6 => { // OR d8
@@ -1238,7 +1238,7 @@ impl CPU {
                 timer.scanline_hz += 8
             },
             0xF7 => { // RST 30H
-                self.op_restart(memory, 0x30);
+                self.op_restart(timer, memory, 0x30);
                 timer.scanline_hz += 16
             },
             0xF8 => { // LD HL,SP+r8
@@ -1273,7 +1273,7 @@ impl CPU {
                 timer.scanline_hz += 16
             },
             0xFB => { // EI
-                self.op_enable_interrupts(memory);
+                self.op_enable_interrupts(timer, memory);
                 timer.scanline_hz += 4
             },
             0xFE => { // CP d8
@@ -1281,7 +1281,7 @@ impl CPU {
                 timer.scanline_hz += 8
             },
             0xFF => { // RST 38H
-                self.op_restart(memory, 0x38);
+                self.op_restart(timer, memory, 0x38);
                 timer.scanline_hz += 16
             },
             _ => { // Unknown OPcode
@@ -1320,7 +1320,7 @@ impl CPU {
             0x06 => { // RLC (HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 let val = self.op_rotate_left_carry(get, arg as u8);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, val);
                 timer.scanline_hz += 16
             },
             0x07 => { // RLC A
@@ -1354,7 +1354,7 @@ impl CPU {
             0x0E => { // RRC (HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 let val = self.op_rotate_right_carry(get, arg as u8);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, val);
                 timer.scanline_hz += 16
             },
             0x0F => { // RRC A
@@ -1388,7 +1388,7 @@ impl CPU {
             0x16 => { // RL (HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 let val = self.op_rotate_left(get, arg as u8);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, val);
                 timer.scanline_hz += 16
             },
             0x17 => { // RL A
@@ -1422,7 +1422,7 @@ impl CPU {
             0x1E => { // RR (HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 let val = self.op_rotate_right(get, arg as u8);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, val);
                 timer.scanline_hz += 16
             },
             0x1F => { // RR A
@@ -1456,7 +1456,7 @@ impl CPU {
             0x26 => { // SLA (HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 let val = self.op_shift_left_carry(get, arg as u8);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, val);
                 timer.scanline_hz += 16
             },
             0x27 => { // SLA A
@@ -1490,7 +1490,7 @@ impl CPU {
             0x2E => { // SRA (HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 let val = self.op_shift_righta_carry(get, arg as u8);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, val);
                 timer.scanline_hz += 16
             },
             0x2F => { // SRA A
@@ -1524,7 +1524,7 @@ impl CPU {
             0x36 => { // SWAP (HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 let val = self.op_swap(get);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, val);
                 timer.scanline_hz += 16
             },
             0x37 => { // SWAP A
@@ -1558,7 +1558,7 @@ impl CPU {
             0x3E => { // SRL (HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
                 let val = self.op_shift_rightl_carry(get, arg as u8);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, val);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, val);
                 timer.scanline_hz += 16
             },
             0x3F => { // SRL A
@@ -1855,7 +1855,7 @@ impl CPU {
             },
             0x86 => { // RES 0,(HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(0));
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(0));
                 timer.scanline_hz += 16
             },
             0x87 => { // RES 0,A
@@ -1888,7 +1888,7 @@ impl CPU {
             },
             0x8E => { // RES 1,(HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(1));
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(1));
                 timer.scanline_hz += 16
             },
             0x8F => { // RES 1,A
@@ -1921,7 +1921,7 @@ impl CPU {
             },
             0x96 => { // RES 2,(HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(2));
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(2));
                 timer.scanline_hz += 16
             },
             0x97 => { // RES 2,A
@@ -1954,7 +1954,7 @@ impl CPU {
             },
             0x9E => { // RES 3,(HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(3));
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(3));
                 timer.scanline_hz += 16
             },
             0x9F => { // RES 3,A
@@ -1987,7 +1987,7 @@ impl CPU {
             },
             0xA6 => { // RES 4,(HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(4));
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(4));
                 timer.scanline_hz += 16
             },
             0xA7 => { // RES 4,A
@@ -2020,7 +2020,7 @@ impl CPU {
             },
             0xAE => { // RES 5,(HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(5));
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(5));
                 timer.scanline_hz += 16
             },
             0xAF => { // RES 5,A
@@ -2053,7 +2053,7 @@ impl CPU {
             },
             0xB6 => { // RES 6,(HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(6));
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(6));
                 timer.scanline_hz += 16
             },
             0xB7 => { // RES 6,A
@@ -2086,7 +2086,7 @@ impl CPU {
             },
             0xBE => { // RES 7,(HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(7));
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get & !CPU::op_bit(7));
                 timer.scanline_hz += 16
             },
             0xBF => { // RES 7,A
@@ -2119,7 +2119,7 @@ impl CPU {
             },
             0xC6 => { // SET 0,(HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(0));
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(0));
                 timer.scanline_hz += 16
             },
             0xC7 => { // SET 0,A
@@ -2152,7 +2152,7 @@ impl CPU {
             },
             0xCE => { // SET 1,(HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(1));
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(1));
                 timer.scanline_hz += 16
             },
             0xCF => { // SET 1,A
@@ -2185,7 +2185,7 @@ impl CPU {
             },
             0xD6 => { // SET 2,(HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(2));
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(2));
                 timer.scanline_hz += 16
             },
             0xD7 => { // SET 2,A
@@ -2218,7 +2218,7 @@ impl CPU {
             },
             0xDE => { // SET 3,(HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(3));
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(3));
                 timer.scanline_hz += 16
             },
             0xDF => { // SET 3,A
@@ -2251,7 +2251,7 @@ impl CPU {
             },
             0xE6 => { // SET 4,(HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(4));
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(4));
                 timer.scanline_hz += 16
             },
             0xE7 => { // SET 4,A
@@ -2284,7 +2284,7 @@ impl CPU {
             },
             0xEE => { // SET 5,(HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(5));
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(5));
                 timer.scanline_hz += 16
             },
             0xEF => { // SET 5,A
@@ -2317,7 +2317,7 @@ impl CPU {
             },
             0xF6 => { // SET 6,(HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(6));
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(6));
                 timer.scanline_hz += 16
             },
             0xF7 => { // SET 6,A
@@ -2350,7 +2350,7 @@ impl CPU {
             },
             0xFE => { // SET 7,(HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(7));
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get | CPU::op_bit(7));
                 timer.scanline_hz += 16
             },
             0xFF => { // SET 7,A
@@ -2392,9 +2392,9 @@ impl CPU {
         }
     }
 
-    pub fn op_push(&mut self, memory:&mut MemMap, val:u8) {
+    pub fn op_push(&mut self, timer:&mut Timer, memory:&mut MemMap, val:u8) {
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        memory.set_memory(CPU::swap_endian(self.registers.sp) as usize, val);
+        memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, val);
     }
 
     pub fn op_pop(&mut self, memory:&mut MemMap) -> u8 {
@@ -2761,14 +2761,14 @@ impl CPU {
         self.stop = true
     }
 
-    pub fn op_disable_interrupts(&mut self, memory:&mut MemMap) {
+    pub fn op_disable_interrupts(&mut self, timer:&mut Timer, memory:&mut MemMap) {
         self.ime = false;
-        memory.set_memory(crate::memory::IE as usize, 0)
+        memory.set_memory(timer, crate::memory::IE as usize, 0)
     }
 
-    pub fn op_enable_interrupts(&mut self, memory:&mut MemMap) {
+    pub fn op_enable_interrupts(&mut self, timer:&mut Timer, memory:&mut MemMap) {
         self.ime = true;
-        memory.set_memory(crate::memory::IE as usize, crate::memory::IE_ALL)
+        memory.set_memory(timer, crate::memory::IE as usize, crate::memory::IE_ALL)
     }
 
     pub fn op_rotate_left(&mut self, reg:u8, bits:u8) -> u8 {
@@ -3035,14 +3035,14 @@ impl CPU {
         jump
     }
 
-    pub fn op_call(&mut self, memory:&mut MemMap) {
+    pub fn op_call(&mut self, timer:&mut Timer, memory:&mut MemMap) {
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        memory.set_memory(CPU::swap_endian(self.registers.sp) as usize, (self.registers.pc >> 8) as u8);
+        memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, (self.registers.pc >> 8) as u8);
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        memory.set_memory(CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
+        memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
     }
 
-    pub fn op_call_if(&mut self, memory:&mut MemMap, cond:JumpCondition) -> bool {
+    pub fn op_call_if(&mut self, timer:&mut Timer, memory:&mut MemMap, cond:JumpCondition) -> bool {
         let mut call = false;
 
         match cond {
@@ -3070,18 +3070,18 @@ impl CPU {
 
         if call {
             self.registers.sp = CPU::dec_16bit(self.registers.sp);
-            memory.set_memory(CPU::swap_endian(self.registers.sp) as usize, (self.registers.pc >> 8) as u8);
+            memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, (self.registers.pc >> 8) as u8);
             self.registers.sp = CPU::dec_16bit(self.registers.sp);
-            memory.set_memory(CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
+            memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
         }
         call
     }
 
-    pub fn op_restart(&mut self, memory:&mut MemMap, offset:u8) {
+    pub fn op_restart(&mut self, timer:&mut Timer, memory:&mut MemMap, offset:u8) {
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        memory.set_memory(CPU::swap_endian(self.registers.sp) as usize, (self.registers.pc >> 8) as u8);
+        memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, (self.registers.pc >> 8) as u8);
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        memory.set_memory(CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
+        memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
         self.registers.pc = (offset as u16) << 8;
     }
 
@@ -3125,12 +3125,12 @@ impl CPU {
         ret
     }
 
-    pub fn op_return_ei(&mut self, memory:&mut MemMap) {
+    pub fn op_return_ei(&mut self, timer:&mut Timer, memory:&mut MemMap) {
         self.registers.pc = memory.get_word(CPU::swap_endian(self.registers.sp) as usize);
         self.registers.sp = CPU::inc_16bit(self.registers.sp);
         self.registers.sp = CPU::inc_16bit(self.registers.sp);
         self.ime = true;
-        memory.set_memory(crate::memory::IE as usize, crate::memory::IE_ALL)
+        memory.set_memory(timer, crate::memory::IE as usize, crate::memory::IE_ALL)
     }
 }
 

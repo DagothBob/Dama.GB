@@ -1,15 +1,23 @@
 #![allow(non_camel_case_types)]
 
+use std::vec;
+
 use crate::memory;
+use crate::system::Timer;
 
 ///////////////////
 // Memory struct //
 ///////////////////
-pub const VBLN:u16 = 0x0040; // V-blank interrupt vector
-pub const LSTT:u16 = 0x0048; // LCD Stat interrupt vector
-pub const TIMR:u16 = 0x0050; // Timer interrupt vector
-pub const SRAL:u16 = 0x0058; // Serial interrupt vector
-pub const JPAD:u16 = 0x0060; // Joypad interrupt vector
+pub const VBLNK_IV:u16 = 0x0040; // V-blank interrupt vector
+pub const LSTAT_IV:u16 = 0x0048; // LCD Stat interrupt vector
+pub const TIMER_IV:u16 = 0x0050; // Timer interrupt vector
+pub const SRIAL_IV:u16 = 0x0058; // Serial interrupt vector
+pub const JYPAD_IV:u16 = 0x0060; // Joypad interrupt vector
+pub const TILE_DATA1:u16 = 0x8000; // Starting offset for 8000-style tile addr
+pub const TILE_DATA2:u16 = 0x8800; // Starting offset for 8800-style tile addr
+pub const BG_MAPS1:u16 = 0x9C00; // Starting offset for background tile maps
+pub const BG_MAPS2:u16 = 0x9FFF; // Ending offset for background tile maps
+pub const OAM_TABLE:u16 = 0xFE00; // Object Attribute Memory
 pub const P1  :u16 = 0xFF00; // Pad IO
     pub const P1_RIGHT:u8 = 0b0001_0001; // Joypad right
     pub const P1_LEFT :u8 = 0b0001_0010; // Joypad left
@@ -77,9 +85,19 @@ pub const SCX :u16 = 0xFF43; // Scroll X
 pub const LY  :u16 = 0xFF44; // LCDC Y
 pub const LYC :u16 = 0xFF45; // LCDC LY-compare
 pub const DMA :u16 = 0xFF46; // DMA transfer & start address
-pub const BGP :u16 = 0xFF47; // Background/Window palette data
+pub const BGP :u16 = 0xFF47; // Background/Window palette data: 00 - white, 01 - lgrey, 10 - dgrey, 11 - black
+    pub const BGP_COL1:u8 = 0b0000_0011; // Color 1
+    pub const BGP_COL2:u8 = 0b0000_1100; // Color 2
+    pub const BGP_COL3:u8 = 0b0011_0000; // Color 3
+    pub const BGP_COL4:u8 = 0b1100_0000; // Color 4
 pub const OBP0:u16 = 0xFF48; // Object palette 0 data
+    pub const OP0_COL2:u8 = 0b0000_1100; // Color 2
+    pub const OP0_COL3:u8 = 0b0011_0000; // Color 3
+    pub const OP0_COL4:u8 = 0b1100_0000; // Color 4
 pub const OBP1:u16 = 0xFF49; // Object palette 1 data
+    pub const OP1_COL2:u8 = 0b0000_1100; // Color 2
+    pub const OP1_COL3:u8 = 0b0011_0000; // Color 3
+    pub const OP1_COL4:u8 = 0b1100_0000; // Color 4
 pub const WY  :u16 = 0xFF4A; // Window Y position
 pub const WX  :u16 = 0xFF4B; // Window X position
 pub const IE  :u16 = 0xFFFF; // Interrupt enable
@@ -100,35 +118,38 @@ impl MemMap {
             mem:[0; 0x10000]
         };
 
-        this.set_memory(0xFF10, 0x80);
-        this.set_memory(0xFF11, 0x88);
-        this.set_memory(0xFF12, 0xF3);
-        this.set_memory(0xFF14, 0xBF);
-        this.set_memory(0xFF16, 0x3F);
-        this.set_memory(0xFF19, 0xBF);
-        this.set_memory(0xFF1A, 0x7F);
-        this.set_memory(0xFF1B, 0xFF);
-        this.set_memory(0xFF1C, 0x9F);
-        this.set_memory(0xFF1E, 0xBF);
-        this.set_memory(0xFF20, 0xFF);
-        this.set_memory(0xFF23, 0xBF);
-        this.set_memory(0xFF24, 0x77);
-        this.set_memory(0xFF25, 0xF3);
-        this.set_memory(0xFF26, 0xF1);
-        this.set_memory(0xFF40, 0x91);
-        this.set_memory(0xFF47, 0xFC);
-        this.set_memory(0xFF48, 0xFF);
-        this.set_memory(0xFF49, 0xFF);
+        this.mem[0xFF10] = 0x80;
+        this.mem[0xFF11] = 0x88;
+        this.mem[0xFF12] = 0xF3;
+        this.mem[0xFF14] = 0xBF;
+        this.mem[0xFF16] = 0x3F;
+        this.mem[0xFF19] = 0xBF;
+        this.mem[0xFF1A] = 0x7F;
+        this.mem[0xFF1B] = 0xFF;
+        this.mem[0xFF1C] = 0x9F;
+        this.mem[0xFF1E] = 0xBF;
+        this.mem[0xFF20] = 0xFF;
+        this.mem[0xFF23] = 0xBF;
+        this.mem[0xFF24] = 0x77;
+        this.mem[0xFF25] = 0xF3;
+        this.mem[0xFF26] = 0xF1;
+        this.mem[0xFF40] = 0x91;
+        this.mem[0xFF47] = 0xFC;
+        this.mem[0xFF48] = 0xFF;
+        this.mem[0xFF49] = 0xFF;
 
         this
     }
 
     // Memory addresses from the game code or registers
     // needs to be endian-swapped for indexing
-    pub fn set_memory(&mut self, addr:usize, val:u8) {
+    pub fn set_memory(&mut self, timer:&mut Timer, addr:usize, val:u8) {
         // DIV register writes result in 0
         if addr == DIV as usize {
             self.mem[addr] = 0
+        }
+        else if addr == memory::DMA as usize {
+            self.begin_dma();
         }
         // LCD STAT is not in mode 3 and trying to write to VRAM/OAM or
         // LCD STAT is not in mode 2 and trying to write to OAM
@@ -166,5 +187,9 @@ impl MemMap {
 
     pub fn get_word(&mut self, addr:usize) -> u16 {
         ((self.get_byte(addr) as u16) << 8) | self.get_byte(addr + 1) as u16
+    }
+
+    pub fn begin_dma(&mut self) {
+
     }
 }
