@@ -109,13 +109,15 @@ pub const IE  :u16 = 0xFFFF; // Interrupt enable
     pub const IE_ALL  :u8 = 0b0001_1111;
 
 pub struct MemMap {
-    pub mem:[u8;0x10000]
+    pub mem:[u8;0x10000],
+    pub dma:bool
 }
 
 impl MemMap {
     pub fn init() -> MemMap {
         let mut this = MemMap {
-            mem:[0; 0x10000]
+            mem:[0; 0x10000],
+            dma:false
         };
 
         this.mem[0xFF10] = 0x80;
@@ -141,15 +143,26 @@ impl MemMap {
         this
     }
 
+    pub fn copy_rom_to_memory(&mut self, bytes:Vec<u8>) {
+        self.mem[..bytes.len()].clone_from_slice(&bytes)
+    }
+
     // Memory addresses from the game code or registers
     // needs to be endian-swapped for indexing
     pub fn set_memory(&mut self, timer:&mut Timer, addr:usize, val:u8) {
+        // During DMA, CPU can only write to 0xFF80 - 0xFFFE
+        if self.dma && (addr < 0xFF80 || addr > 0xFFFE) {
+            // Do nothing
+        }
         // DIV register writes result in 0
-        if addr == DIV as usize {
+        else if addr == DIV as usize {
             self.mem[addr] = 0
         }
         else if addr == memory::DMA as usize {
-            self.begin_dma();
+            self.mem[addr] = val;
+            self.begin_dma(timer);
+            timer.scanline_hz += 160;
+            self.dma = false;
         }
         // LCD STAT is not in mode 3 and trying to write to VRAM/OAM or
         // LCD STAT is not in mode 2 and trying to write to OAM
@@ -172,12 +185,15 @@ impl MemMap {
     }
 
     pub fn get_byte(&mut self, addr:usize) -> u8 {
-        // LCD STAT is in mode 3 and trying to write to VRAM/OAM or
-        // LCD STAT is in mode 2 and trying to write to OAM
+        // LCD STAT is in mode 3 and trying to read from VRAM/OAM or
+        // LCD STAT is in mode 2 and trying to read from OAM or
+        // DMA is active and trying to read outside of 0xFF80 - 0xFFFE
         if (((self.mem[memory::STAT as usize] & memory::STAT_MFT) > 0) && 
-              addr >= 0x8000 && addr <= 0x9FFF) ||
+            addr >= 0x8000 && addr <= 0x9FFF) ||
            (((self.mem[memory::STAT as usize] & memory::STAT_MFO) > 0) && 
-              addr >= 0xFE00 && addr <= 0xFE9F) {
+            addr >= 0xFE00 && addr <= 0xFE9F) ||
+            (self.dma && (addr < 0xFF80 || addr > 0xFFFE)) 
+        {
             0xFF
         }
         else {
@@ -189,7 +205,13 @@ impl MemMap {
         ((self.get_byte(addr) as u16) << 8) | self.get_byte(addr + 1) as u16
     }
 
-    pub fn begin_dma(&mut self) {
+    pub fn begin_dma(&mut self, timer:&mut Timer) {
+        self.dma = true;
+        let upper_addr = self.get_byte(memory::DMA as usize) as u16;
 
+        for i in 0x0..0xA0 {
+            let get = self.get_byte(((upper_addr << 8) | i) as usize);
+            self.set_memory(timer, 0xFE00 | i as usize, get);
+        }
     }
 }

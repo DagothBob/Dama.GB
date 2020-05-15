@@ -2,6 +2,9 @@
 
 extern crate sdl2;
 
+use std::fs::File;
+use std::io::Read;
+
 use sdl2::pixels::Color;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -27,15 +30,23 @@ pub struct System {
 }
 
 impl System {
-    pub fn init() -> System {
-        System {
+    pub fn init(rom:File) -> System {
+        let mut ret = System {
             gb_cpu:cpu::CPU::init(),
             gb_memory:memory::MemMap::init(),
             gb_lcd:display::LCD::init(),
             global_timer:Timer::init(),
             sdl_context:sdl2::init().unwrap(),
             quit:false
+        };
+        let mut rom_bytes:Vec<u8> = Vec::new();
+
+        for b in rom.bytes() {
+            rom_bytes.resize(rom_bytes.len() + 1, b.unwrap());
         }
+        ret.gb_memory.copy_rom_to_memory(rom_bytes);
+
+        ret
     }
 
     pub fn system_loop(&mut self) {
@@ -49,16 +60,16 @@ impl System {
 
         // Per-frame loop
         while !self.quit {
-            let current_scanline = Timer::get_scanlines(&mut self.gb_memory);
+            let mut current_scanline = Timer::get_scanlines(&mut self.gb_memory);
             self.handle_sdl_events(self.sdl_context.event_pump().unwrap());
 
             // Per-scanline loop
-            while Timer::get_scanlines(&mut self.gb_memory) == current_scanline {
+            while Timer::get_scanlines(&mut self.gb_memory) == current_scanline && current_scanline <= SCANLINES_PER_FRAME as u8 {
                 self.check_lyc_interrupt();
 
                 // Halted/stopped and interrupts enabled means CPU will halt instruction flow
                 // Else, turn halt/stop flag off
-                if !self.gb_cpu.halt && !self.gb_cpu.stop && self.gb_cpu.ime {
+                if !self.gb_cpu.halt && !self.gb_cpu.stop {
                     self.gb_cpu.cpu_cycle(&mut self.gb_memory, &mut self.global_timer);
                 }
                 else if (self.gb_cpu.halt || self.gb_cpu.stop) && !self.gb_cpu.ime {
@@ -70,9 +81,12 @@ impl System {
                 if self.global_timer.scanline_hz > HZ_PER_SCANLINE {
                     let ly = Timer::get_scanlines(&mut self.gb_memory);
                     self.gb_memory.set_memory(&mut self.global_timer, memory::LY as usize, ly + 1);
+                    current_scanline = Timer::get_scanlines(&mut self.gb_memory);
+                    self.global_timer.scanline_hz -= HZ_PER_SCANLINE;
                 }
                 self.interrupt_handler(); // Should be at the end of the loop
             }
+            self.gb_memory.set_memory(&mut self.global_timer, memory::LY as usize, 0);
         }
     }
 
