@@ -13,14 +13,19 @@ use crate::memory::MemMap;
 ////////////////
 pub const TILE_SIZE:u64 = 16;
 
-pub struct LCD {}
+pub struct LCD {
+    pub transfer_is_done:bool
+}
 
 impl LCD {
     pub fn init() -> LCD {
-        LCD {}
+        LCD {
+            transfer_is_done:false
+        }
     }
 
     pub fn draw_scanline(&mut self, mem:&mut MemMap) {
+        // DEBUG: Draw tile memory straight to screen
 
     }
 
@@ -91,5 +96,10 @@ impl LCD {
     pub fn begin_lcd_transfer(&mut self, timer:&mut Timer, mem:&mut MemMap) {
         // Set LCD transfer mode (3) flag in STAT register
         mem.set_memory(timer, memory::STAT as usize, memory::STAT_MFT)
+    }
+
+    pub fn get_video_mode(&mut self, mem:&mut MemMap) -> u8 {
+        // Mask STAT register. MFG because it is 0b11
+        mem.get_byte(memory::STAT as usize) & memory::STAT_MFT
     }
 }

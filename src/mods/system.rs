@@ -50,6 +50,7 @@ impl System {
     }
 
     pub fn system_loop(&mut self) {
+        // Initialization stuff
         let video_subsystem = self.sdl_context.video().unwrap();
         let window = video_subsystem.window("Dama-GB", SCREEN_WIDTH, SCREEN_HEIGHT).position_centered().build().unwrap();
         let mut canvas = window.into_canvas().build().unwrap();
@@ -60,13 +61,40 @@ impl System {
 
         // Per-frame loop
         while !self.quit {
+            let mut ending_cycles = 0; // For overflow cycles from last scanline
             let mut current_scanline = Timer::get_scanlines(&mut self.gb_memory);
             self.handle_sdl_events(self.sdl_context.event_pump().unwrap());
 
+            self.gb_lcd.begin_oam(&mut self.global_timer, &mut self.gb_memory);
+
             // Per-scanline loop
-            while Timer::get_scanlines(&mut self.gb_memory) == current_scanline && current_scanline <= SCANLINES_PER_FRAME as u8 {
+            while Timer::get_scanlines(&mut self.gb_memory) == current_scanline && current_scanline < SCANLINES_PER_FRAME as u8 {
                 self.check_lyc_interrupt();
 
+                // Check for OAM scan dots and video mode is 0 (H-Blank)
+                if (self.global_timer.scanline_hz < OAM_CYCLE_END) &&
+                   (self.gb_lcd.get_video_mode(&mut self.gb_memory) == memory::STAT_MFH) 
+                {
+                    self.gb_lcd.begin_oam(&mut self.global_timer, &mut self.gb_memory);
+                }
+                // Check for LCD transfer dots and video mode is 2 (OAM)
+                else if (self.global_timer.scanline_hz > TRANSFER_CYCLE_MIN) && (self.global_timer.scanline_hz <= TRANSFER_CYCLE_MAX) &&
+                   (self.gb_lcd.get_video_mode(&mut self.gb_memory) == memory::STAT_MFO) 
+                {
+                    self.gb_lcd.begin_lcd_transfer(&mut self.global_timer, &mut self.gb_memory);
+                }
+                // Check for H-Blank dots and video mode is 3 (LCD transfer) and LCD transfer is done
+                else if (self.global_timer.scanline_hz > HBLANK_CYCLE_MIN) && (self.global_timer.scanline_hz <= HBLANK_CYCLE_MAX) &&
+                   (self.gb_lcd.get_video_mode(&mut self.gb_memory) == memory::STAT_MFT) && self.gb_lcd.transfer_is_done 
+                {
+                    self.gb_lcd.begin_hblank(&mut self.global_timer, &mut self.gb_memory);
+                }
+                // Check for V-Blank scanline and video mode is 0 (H-Blank)
+                else if (current_scanline as u64 == VBLANK_SCANLINE) && (self.gb_lcd.get_video_mode(&mut self.gb_memory) == memory::STAT_MFH) {
+                    self.gb_lcd.begin_vblank(&mut self.global_timer, &mut self.gb_memory);
+                }
+
+                // Run CPU instruction
                 // Halted/stopped and interrupts enabled means CPU will halt instruction flow
                 // Else, turn halt/stop flag off
                 if !self.gb_cpu.halt && !self.gb_cpu.stop {
@@ -78,15 +106,17 @@ impl System {
                 }
 
                 // End of scanline
-                if self.global_timer.scanline_hz > HZ_PER_SCANLINE {
+                if self.global_timer.scanline_hz > CYCLES_PER_SCANLINE {
+                    // Increment to next scanline
                     let ly = Timer::get_scanlines(&mut self.gb_memory);
                     self.gb_memory.set_memory(&mut self.global_timer, memory::LY as usize, ly + 1);
                     current_scanline = Timer::get_scanlines(&mut self.gb_memory);
-                    self.global_timer.scanline_hz -= HZ_PER_SCANLINE;
+                    self.global_timer.scanline_hz -= CYCLES_PER_SCANLINE;
+                    ending_cycles = self.global_timer.scanline_hz;
                 }
                 self.interrupt_handler(); // Should be at the end of the loop
             }
-            self.gb_memory.set_memory(&mut self.global_timer, memory::LY as usize, 0);
+            self.gb_memory.set_memory(&mut self.global_timer, memory::LY as usize, ending_cycles as u8);
         }
     }
 
@@ -168,6 +198,7 @@ impl System {
         }
     }
 
+    // Handling I/O stuff from SDL
     pub fn handle_sdl_events(&mut self, mut event_pump:sdl2::EventPump) {
         let pad_state = self.gb_memory.get_byte(memory::P1 as usize);
         let int_f = self.gb_memory.get_byte(memory::IF as usize);
@@ -226,12 +257,19 @@ impl System {
 //                                                //
 // 456 clock cycles per scanline                  //
 ////////////////////////////////////////////////////
-pub const CLOCK:u64 = 4_194304;
-pub const HZ_PER_FRAME:u64 = 70224;
-pub const SCANLINES_PER_FRAME:u64 = 154;
-pub const HZ_PER_SCANLINE:u64 = 456;
+pub const CYCLES_PER_SECOND:u64 = 4_194304;
+pub const CYCLES_PER_FRAME:u64 = 70224;
+pub const CYCLES_PER_SCANLINE:u64 = 456;
 
-pub const VBLANK_SCANLINE:u64 = 144;
+pub const OAM_CYCLE_END:u64 = 80;           // Mode 2
+pub const TRANSFER_CYCLE_MIN:u64 = 168; // Mode 3
+pub const TRANSFER_CYCLE_MAX:u64 = 291;
+pub const HBLANK_CYCLE_MIN:u64 = 85;    // Mode 0
+pub const HBLANK_CYCLE_MAX:u64 = 208;
+
+pub const SCANLINES_PER_FRAME:u64 = 154;
+
+pub const VBLANK_SCANLINE:u64 = 144;    // Mode 1
 
 pub struct Timer {
     pub scanline_hz:u64
