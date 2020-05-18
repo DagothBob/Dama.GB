@@ -54,6 +54,10 @@ impl System {
         let video_subsystem = self.sdl_context.video().unwrap();
         let window = video_subsystem.window("Dama-GB", SCREEN_WIDTH, SCREEN_HEIGHT).position_centered().build().unwrap();
         let mut canvas = window.into_canvas().build().unwrap();
+        let texture_creator = canvas.texture_creator();
+        let mut screen_texture = texture_creator
+            .create_texture_target(texture_creator.default_pixel_format(), SCREEN_WIDTH, SCREEN_HEIGHT)
+            .unwrap();
 
         canvas.set_draw_color(Color::RGB(0, 0, 0));
         canvas.clear();
@@ -63,8 +67,11 @@ impl System {
         while !self.quit {
             let mut ending_cycles = 0; // For overflow cycles from last scanline
             let mut current_scanline = Timer::get_scanlines(&mut self.gb_memory);
-            self.handle_sdl_events(self.sdl_context.event_pump().unwrap());
 
+            canvas.set_draw_color(Color::RGB(0, 0, 0));
+            canvas.clear();
+
+            self.handle_sdl_events(self.sdl_context.event_pump().unwrap());
             self.gb_lcd.begin_oam(&mut self.global_timer, &mut self.gb_memory);
 
             // Per-scanline loop
@@ -116,7 +123,9 @@ impl System {
                 }
                 self.interrupt_handler(); // Should be at the end of the loop
             }
+            self.gb_lcd.draw_scanline(&mut self.gb_memory, &mut canvas, &mut screen_texture);
             self.gb_memory.set_memory(&mut self.global_timer, memory::LY as usize, ending_cycles as u8);
+            canvas.present();
         }
     }
 
