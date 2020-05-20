@@ -38,8 +38,8 @@ impl LCD {
         let mut scanline_tiles:Vec<Vec<u8>> = Vec::new();
 
         // DEBUG: Draw tile memory straight to screen
-        for i in 0..scanline_tiles.len() {
-            scanline_tiles[i] = self.get_tile_8000(mem, (get_ly as usize * TILES_PER_SCANLINE as usize) + i);
+        for i in 0..TILES_PER_SCANLINE as usize {
+            scanline_tiles.push(self.get_tile_8000(mem, (get_ly as usize /* TILES_PER_SCANLINE as usize*/) + i));
         }
 
         match canvas.with_texture_canvas(screen_texture, |texture_canvas| {
@@ -174,6 +174,7 @@ impl LCD {
     }
 
     pub fn begin_hblank(&mut self, timer:&mut Timer, mem:&mut MemMap) {
+        print!("\nBegin H-Blank\n");
         // Set LSTAT interrupt if enabled in STAT
         if mem.get_byte(memory::STAT as usize) & memory::STAT_HBI > 0 {
             let get_if = mem.get_byte(memory::IF as usize);
@@ -189,6 +190,7 @@ impl LCD {
     // V-Blank lasts 1.1 milliseconds
     // Occurs 59.7 times per second
     pub fn begin_vblank(&mut self, timer:&mut Timer, mem:&mut MemMap) {
+        print!("\nBegin V-Blank\n");
         // Set V-Blank interrupt
         let mut get_if = mem.get_byte(memory::IF as usize);
         mem.set_memory(timer, memory::IF as usize, get_if | memory::IF_VBLNK);
@@ -205,6 +207,7 @@ impl LCD {
 
     // OAM search for 1 scanline after V-Blank or H-Blank when LY < 144
     pub fn begin_oam(&mut self, timer:&mut Timer, mem:&mut MemMap) {
+        print!("\nBegin OAM\n");
         if mem.get_byte(memory::STAT as usize) & memory::STAT_OAM > 0 {
             // Set OAM interrupt
             let get_if = mem.get_byte(memory::IF as usize);
@@ -217,6 +220,7 @@ impl LCD {
 
     // LCD transfer for 168 - 291 cycles after OAM search
     pub fn begin_lcd_transfer(&mut self, timer:&mut Timer, mem:&mut MemMap) {
+        print!("\nBegin LCD transfer\n");
         // Set LCD transfer mode (3) flag in STAT register
         mem.set_memory(timer, memory::STAT as usize, memory::STAT_MFT)
     }

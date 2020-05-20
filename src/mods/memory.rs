@@ -187,6 +187,10 @@ impl MemMap {
     }
 
     pub fn get_byte(&mut self, addr:usize) -> u8 {
+        print!("addr: \t{:X}\n",addr);
+        if addr >= self.mem.len() {
+            return 0
+        }
         // LCD STAT is in mode 3 and trying to read from VRAM/OAM or
         // LCD STAT is in mode 2 and trying to read from OAM or
         // DMA is active and trying to read outside of 0xFF80 - 0xFFFE
@@ -204,6 +208,7 @@ impl MemMap {
     }
 
     pub fn get_word(&mut self, addr:usize) -> u16 {
+        print!("addr: \t{:X}\n",addr);
         ((self.get_byte(addr) as u16) << 8) | self.get_byte(addr + 1) as u16
     }
 

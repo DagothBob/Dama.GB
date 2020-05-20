@@ -14,6 +14,7 @@ use system::System;
 
 fn main() {
     let args:Vec<String> = env::args().collect();
+    print!("Open {}\n", args[1]);
     let file_path = Path::new(&args[1]);
     let file = match File::open(file_path) {
         Ok(f) => f,
