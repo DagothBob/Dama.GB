@@ -49,7 +49,7 @@ impl LCD {
                 for i in (get_ly % 8)..(get_ly % 8) + 8 {
                     texture_canvas.set_draw_color(tile_pixels[i as usize]);
                     match texture_canvas.draw_point(Point::new(scanline_index, get_ly as i32)) {
-                        Ok(point) => {},
+                        Ok(point) => { point },
                         Err(error) => {
                             panic!("Failure drawing point to screen: {}", error);
                         }
@@ -58,7 +58,7 @@ impl LCD {
                 }
             }
         }) {
-            Ok(result) => {},
+            Ok(result) => { result },
             Err(error) => {
                 panic!("Failure updating screen texture: {}", error);
             }

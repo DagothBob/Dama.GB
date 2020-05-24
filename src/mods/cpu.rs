@@ -48,6 +48,7 @@ impl CPU {
 
     // Get next opcode
     pub fn fetch(&mut self, memory:&mut MemMap, timer:&mut Timer) {
+        println!(" Fetch");
         let get = memory.get_byte(CPU::swap_endian(self.registers.pc) as usize);
         self.decode(memory, timer, get)
     }
@@ -58,12 +59,15 @@ impl CPU {
         if opcode == 0xCB {
             self.registers.pc = CPU::inc_16bit(self.registers.pc);
             let get_op = memory.get_byte(CPU::swap_endian(self.registers.pc) as usize);
+
             self.registers.pc = CPU::inc_16bit(self.registers.pc);
             let get_arg1 = memory.get_byte(CPU::swap_endian(self.registers.pc) as usize);
+
             self.registers.pc = CPU::inc_16bit(self.registers.pc);
             let get_arg2 = memory.get_byte(CPU::swap_endian(self.registers.pc) as usize);
+
             let arg16 = ((get_arg1 as u16) << 8) | get_arg2 as u16;
-            print!("\nop: {:X} {:X} {:X} {:X}\n", opcode, get_op, get_arg1, get_arg2);
+            println!(" op: {:X} {:X} {:X} {:X}", opcode, get_op, get_arg1, get_arg2);
             self.execute(memory, timer, 0xCB, Some(get_op), arg16)
         }
         else {
@@ -78,7 +82,7 @@ impl CPU {
                     let get_arg2 = memory.get_byte(CPU::swap_endian(self.registers.pc) as usize);
 
                     let arg16 = ((get_arg1 as u16) << 8) | get_arg2 as u16;
-                    print!("\nop: {:X} {:X} {:X}\n", opcode, get_arg1, get_arg2);
+                    println!(" op: {:X} {:X} {:X}", opcode, get_arg1, get_arg2);
                     self.execute(memory, timer, opcode, None, arg16)
                 },
                 // 2-byte opcodes
@@ -88,7 +92,7 @@ impl CPU {
                     self.registers.pc = CPU::inc_16bit(self.registers.pc);
                     let arg8 = memory.get_byte(CPU::swap_endian(self.registers.pc) as usize);
 
-                    print!("\nop: {:X} {:X}\n", opcode, arg8);
+                    println!(" op: {:X} {:X}", opcode, arg8);
                     self.execute(memory, timer, opcode, None, arg8 as u16)
                 },
                 // 1-byte opcodes
@@ -97,7 +101,7 @@ impl CPU {
                         panic!("CB opcode passed twice to decode()")
                     }
                     else {
-                        print!("\nop: {:X}\n", opcode);
+                        println!(" op: {:X}", opcode);
                         self.execute(memory, timer, opcode, None, 0)
                     }
                 }
@@ -113,16 +117,21 @@ impl CPU {
     /////////////////////
     // Utility methods //
     /////////////////////
+    
+    // Add 16 bit values endian-swapped for proper carrying behaviour
+    pub fn add_16bit_swap(reg:u16, val:u16) -> u16 {
+        CPU::swap_endian(CPU::swap_endian(reg).wrapping_add(CPU::swap_endian(val)))
+    }
 
     // Decrement 8 bit value
     pub fn dec_8bit(reg:u8) -> u8 {
-        reg - 1
+        reg.wrapping_sub(1)
     }
 
     // Decrement 16 bit value
     // Endian-swapped, so upper byte it decremented
     pub fn dec_16bit(reg:u16) -> u16 {
-        CPU::swap_endian(CPU::swap_endian(reg) - 1)
+        CPU::swap_endian(CPU::swap_endian(reg).wrapping_sub(1))
     }
 
     // Decrement combined 8 bit registers as a 16 bit one
@@ -157,13 +166,13 @@ impl CPU {
 
     // Increment 8 bit value
     pub fn inc_8bit(reg:u8) -> u8 {
-        reg + 1
+        reg.wrapping_add(1)
     }
 
     // Increment 16 bit value
     // Endian-swapped, so upper byte is incremented
     pub fn inc_16bit(reg:u16) -> u16 {
-        CPU::swap_endian(CPU::swap_endian(reg) + 1)
+        CPU::swap_endian(CPU::swap_endian(reg).wrapping_add(1))
     }
 
     // Increment combined 8 bit registers as a 16 bit one
@@ -171,17 +180,17 @@ impl CPU {
     pub fn inc_16bits(&mut self, reg:RegistersEnum) {
         match reg {
             RegistersEnum::bc => {
-                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.c, self.registers.b) + 1);
+                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.c, self.registers.b).wrapping_add(1));
                 self.registers.b = CPU::get_upper_byte(concat);
                 self.registers.c = concat as u8
             },
             RegistersEnum::de => {
-                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.e, self.registers.d) + 1);
+                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.e, self.registers.d).wrapping_add(1));
                 self.registers.d = CPU::get_upper_byte(concat);
                 self.registers.e = concat as u8
             },
             RegistersEnum::hl => {
-                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.l, self.registers.h) + 1);
+                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.l, self.registers.h).wrapping_add(1));
                 self.registers.h = CPU::get_upper_byte(concat);
                 self.registers.l = concat as u8
             }
@@ -200,9 +209,10 @@ impl CPU {
 
     // opcode = opcode found in first 256, opcode2 = opcode after CB, arg = literal value
     pub fn op_match(&mut self, memory:&mut MemMap, timer:&mut Timer, opcode:u8, opcode2:Option<u8>, arg:u16) {
-        //print!("A: {}\nB: {}\nC: {}\nD: {}\nE: {}\nF: {}\nH: {}\nL: {}\n\n", 
-        //        self.registers.a, self.registers.b, self.registers.c, self.registers.d, self.registers.e, self.registers.f, self.registers.h, self.registers.l);
-        print!("pc:\t{:X}\n", CPU::swap_endian(self.registers.pc));
+        println!(" A: {:X}\n B: {:X}\n C: {:X}\n D: {:X}\n E: {:X}\n F: {:08b}\n H: {:X}\n L: {:X}", 
+                self.registers.a, self.registers.b, self.registers.c, self.registers.d, self.registers.e, self.registers.f, self.registers.h, self.registers.l);
+        println!(" pc:\t{:X}", CPU::swap_endian(self.registers.pc));
+        println!(" sp:\t{:X}", CPU::swap_endian(self.registers.sp));
         match opcode {
             0x00 => { // NOP
                 CPU::op_nop();
@@ -1473,7 +1483,7 @@ impl CPU {
                 timer.scanline_hz += 16
             },
             0xF8 => { // LD HL,SP+r8
-                let sp_new = self.registers.sp.wrapping_add(arg << 8);
+                let sp_new = CPU::add_16bit_swap(self.registers.sp, arg << 8);
                 let old_l = self.registers.l;
 
                 self.op_load_16bits(RegistersEnum::hl, sp_new);
@@ -2897,10 +2907,11 @@ impl CPU {
 
     pub fn op_add_8bit(&mut self, val:u8, check_carry:bool) {
         let old_a = self.registers.a;
+        let flag_check = (self.registers.f & FLAG_CARR) > 0;
         self.registers.a = self.registers.a.wrapping_add(val);
 
-        let carry = if check_carry {
-            self.registers.a += 1;
+        let carry = if check_carry && flag_check {
+            self.registers.a = CPU::inc_8bit(self.registers.a);
             true
         }
         else {
@@ -2944,7 +2955,7 @@ impl CPU {
         self.registers.a = self.registers.a.wrapping_sub(val);
 
         let carry = if check_carry && (self.registers.f & FLAG_CARR) > 0 {
-            self.registers.a = self.registers.a.wrapping_sub(1);
+            self.registers.a = CPU::dec_8bit(self.registers.a);
             true
         }
         else {
@@ -3057,7 +3068,7 @@ impl CPU {
 
     pub fn op_increment_8bit(&mut self, reg:u8) -> u8 {
         let old_reg = reg;
-        let new_reg = old_reg.wrapping_add(1);
+        let new_reg = CPU::inc_8bit(old_reg);
 
         if new_reg == 0 {
             self.registers.f |= FLAG_ZERO;
@@ -3079,7 +3090,7 @@ impl CPU {
 
     pub fn op_decrement_8bit(&mut self, reg:u8) -> u8 {
         let old_reg = reg;
-        let new_reg = old_reg.wrapping_sub(1);
+        let new_reg = CPU::dec_8bit(old_reg);
 
         if new_reg == 0 {
             self.registers.f |= FLAG_ZERO;
@@ -3106,9 +3117,9 @@ impl CPU {
         match reg {
             RegistersEnum::hl => {
                 old_reg = Registers::concat_registers(self.registers.h, self.registers.l);
-                self.registers.h = self.registers.h.wrapping_add(val as u8);
-                self.registers.l = self.registers.l.wrapping_add((val << 8) as u8);
-                mod_reg = Registers::concat_registers(self.registers.h, self.registers.l);
+                mod_reg = CPU::swap_endian(CPU::swap_endian(old_reg).wrapping_add(CPU::swap_endian(val)));
+                self.registers.h = CPU::get_upper_byte(mod_reg);
+                self.registers.l = mod_reg as u8;
             }
             RegistersEnum::sp => {
                 old_reg = self.registers.sp;
@@ -3150,7 +3161,7 @@ impl CPU {
                 self.inc_16bits(RegistersEnum::hl);
             }
             RegistersEnum::sp => {
-                self.registers.sp = self.registers.sp.wrapping_add(1);
+                self.registers.sp = CPU::inc_16bit(self.registers.sp);
             }
             _ => {
                 panic!("Invalid registers enum passed to op_increment_16bit");
@@ -3170,7 +3181,7 @@ impl CPU {
                 self.dec_16bits(RegistersEnum::hl);
             }
             RegistersEnum::sp => {
-                self.registers.sp = self.registers.sp.wrapping_sub(1);
+                self.registers.sp = CPU::dec_16bit(self.registers.sp);
             }
             _ => {
                 panic!("Invalid registers enum passed to op_decrement_16bit");
@@ -3456,7 +3467,7 @@ impl CPU {
     }
 
     pub fn op_jump(&mut self, addr:u16) {
-        self.registers.pc = CPU::swap_endian(addr);
+        self.registers.pc = addr;
     }
 
     pub fn op_jump_if(&mut self, addr:u16, cond:JumpCondition) -> bool {
@@ -3492,7 +3503,7 @@ impl CPU {
     }
 
     pub fn op_jump_add(&mut self, offset:u8) {
-        self.registers.pc = self.registers.pc.wrapping_add((offset as u16) << 8);
+        self.registers.pc = CPU::add_16bit_swap(self.registers.pc, (offset as u16) << 8);
     }
 
     pub fn op_jump_if_add(&mut self, offset:u8, cond:JumpCondition) -> bool {
@@ -3522,14 +3533,14 @@ impl CPU {
         }
 
         if jump {
-            self.registers.pc = self.registers.pc.wrapping_add((offset as u16) << 8);
+            self.registers.pc = CPU::add_16bit_swap(self.registers.pc, (offset as u16) << 8);
         }
         jump
     }
 
     pub fn op_call(&mut self, timer:&mut Timer, memory:&mut MemMap) {
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, (self.registers.pc >> 8) as u8);
+        memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, CPU::get_upper_byte(self.registers.pc));
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
         memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
     }
@@ -3562,7 +3573,7 @@ impl CPU {
 
         if call {
             self.registers.sp = CPU::dec_16bit(self.registers.sp);
-            memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, (self.registers.pc >> 8) as u8);
+            memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, CPU::get_upper_byte(self.registers.pc));
             self.registers.sp = CPU::dec_16bit(self.registers.sp);
             memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
         }
@@ -3571,7 +3582,7 @@ impl CPU {
 
     pub fn op_restart(&mut self, timer:&mut Timer, memory:&mut MemMap, offset:u8) {
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, (self.registers.pc >> 8) as u8);
+        memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, CPU::get_upper_byte(self.registers.pc));
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
         memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
         self.registers.pc = (offset as u16) << 8;

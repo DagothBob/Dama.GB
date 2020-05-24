@@ -76,6 +76,7 @@ impl System {
 
             // Per-scanline loop
             while Timer::get_scanlines(&mut self.gb_memory) == current_scanline && current_scanline < SCANLINES_PER_FRAME as u8 {
+                println!("\nLY: {}", current_scanline);
                 self.check_lyc_interrupt();
 
                 // Check for OAM scan dots and video mode is 0 (H-Blank)
@@ -114,6 +115,8 @@ impl System {
 
                 // End of scanline
                 if self.global_timer.scanline_hz > CYCLES_PER_SCANLINE {
+                    self.gb_lcd.draw_scanline(&mut self.gb_memory, &mut canvas, &mut screen_texture);
+
                     // Increment to next scanline
                     let ly = Timer::get_scanlines(&mut self.gb_memory);
                     self.gb_memory.set_memory(&mut self.global_timer, memory::LY as usize, ly + 1);
@@ -123,7 +126,6 @@ impl System {
                 }
                 self.interrupt_handler(); // Should be at the end of the loop
             }
-            self.gb_lcd.draw_scanline(&mut self.gb_memory, &mut canvas, &mut screen_texture);
             self.gb_memory.set_memory(&mut self.global_timer, memory::LY as usize, ending_cycles as u8);
             canvas.present();
         }

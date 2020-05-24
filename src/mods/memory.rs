@@ -152,6 +152,7 @@ impl MemMap {
     // Memory addresses from the game code or registers
     // needs to be endian-swapped for indexing
     pub fn set_memory(&mut self, timer:&mut Timer, addr:usize, val:u8) {
+        println!(" Waddr: \t{:X} | {:X}", addr, val);
         // During DMA, CPU can only write to 0xFF80 - 0xFFFE
         if self.dma && (addr < 0xFF80 || addr > 0xFFFE) {
             // Do nothing
@@ -187,7 +188,7 @@ impl MemMap {
     }
 
     pub fn get_byte(&mut self, addr:usize) -> u8 {
-        print!("addr: \t{:X}\n",addr);
+        println!(" Raddr: \t{:X}",addr);
         if addr >= self.mem.len() {
             return 0
         }
@@ -208,7 +209,7 @@ impl MemMap {
     }
 
     pub fn get_word(&mut self, addr:usize) -> u16 {
-        print!("addr: \t{:X}\n",addr);
+        println!(" Raddr: \t{:X}",addr);
         ((self.get_byte(addr) as u16) << 8) | self.get_byte(addr + 1) as u16
     }
 
