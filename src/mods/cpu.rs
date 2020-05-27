@@ -49,7 +49,7 @@ impl CPU {
     // Get next opcode
     pub fn fetch(&mut self, memory:&mut MemMap, timer:&mut Timer) {
         println!(" Fetch");
-        let get = memory.get_byte(CPU::swap_endian(self.registers.pc) as usize);
+        let get = memory.get_byte(self.registers.pc.swap_bytes() as usize);
         self.decode(memory, timer, get)
     }
 
@@ -58,13 +58,13 @@ impl CPU {
         // CB-prefixed opcodes
         if opcode == 0xCB {
             self.registers.pc = CPU::inc_16bit(self.registers.pc);
-            let get_op = memory.get_byte(CPU::swap_endian(self.registers.pc) as usize);
+            let get_op = memory.get_byte(self.registers.pc.swap_bytes() as usize);
 
             self.registers.pc = CPU::inc_16bit(self.registers.pc);
-            let get_arg1 = memory.get_byte(CPU::swap_endian(self.registers.pc) as usize);
+            let get_arg1 = memory.get_byte(self.registers.pc.swap_bytes() as usize);
 
             self.registers.pc = CPU::inc_16bit(self.registers.pc);
-            let get_arg2 = memory.get_byte(CPU::swap_endian(self.registers.pc) as usize);
+            let get_arg2 = memory.get_byte(self.registers.pc.swap_bytes() as usize);
 
             let arg16 = ((get_arg1 as u16) << 8) | get_arg2 as u16;
             println!(" op: {:X} {:X} {:X} {:X}", opcode, get_op, get_arg1, get_arg2);
@@ -76,10 +76,10 @@ impl CPU {
                 0x01 | 0x08 | 0x11 | 0x21 | 0x31 | 0xC2 | 0xC3 | 0xC4 | 
                 0xCA | 0xCC | 0xCD | 0xD2 | 0xD4 | 0xDA | 0xDC | 0xEA | 0xFA => {
                     self.registers.pc = CPU::inc_16bit(self.registers.pc);
-                    let get_arg1 = memory.get_byte(CPU::swap_endian(self.registers.pc) as usize);
+                    let get_arg1 = memory.get_byte(self.registers.pc.swap_bytes() as usize);
 
                     self.registers.pc = CPU::inc_16bit(self.registers.pc);
-                    let get_arg2 = memory.get_byte(CPU::swap_endian(self.registers.pc) as usize);
+                    let get_arg2 = memory.get_byte(self.registers.pc.swap_bytes() as usize);
 
                     let arg16 = ((get_arg1 as u16) << 8) | get_arg2 as u16;
                     println!(" op: {:X} {:X} {:X}", opcode, get_arg1, get_arg2);
@@ -90,7 +90,7 @@ impl CPU {
                 0x28 | 0x2E | 0x30 | 0x36 | 0x38 | 0x3E | 0xC6 | 0xCE | 0xD6 |
                 0xDE | 0xE0 | 0xE6 | 0xE8 | 0xEE | 0xF0 | 0xF6 | 0xF8 | 0xFE => {
                     self.registers.pc = CPU::inc_16bit(self.registers.pc);
-                    let arg8 = memory.get_byte(CPU::swap_endian(self.registers.pc) as usize);
+                    let arg8 = memory.get_byte(self.registers.pc.swap_bytes() as usize);
 
                     println!(" op: {:X} {:X}", opcode, arg8);
                     self.execute(memory, timer, opcode, None, arg8 as u16)
@@ -120,7 +120,7 @@ impl CPU {
     
     // Add 16 bit values endian-swapped for proper carrying behaviour
     pub fn add_16bit_swap(reg:u16, val:u16) -> u16 {
-        CPU::swap_endian(CPU::swap_endian(reg).wrapping_add(CPU::swap_endian(val)))
+        reg.swap_bytes().wrapping_add(val).swap_bytes()
     }
 
     // Decrement 8 bit value
@@ -131,7 +131,7 @@ impl CPU {
     // Decrement 16 bit value
     // Endian-swapped, so upper byte it decremented
     pub fn dec_16bit(reg:u16) -> u16 {
-        CPU::swap_endian(CPU::swap_endian(reg).wrapping_sub(1))
+        reg.swap_bytes().wrapping_sub(1).swap_bytes()
     }
 
     // Decrement combined 8 bit registers as a 16 bit one
@@ -139,17 +139,17 @@ impl CPU {
     pub fn dec_16bits(&mut self, reg:RegistersEnum) {
         match reg {
             RegistersEnum::bc => {
-                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.c, self.registers.b) - 1);
+                let concat:u16 = Registers::concat_registers(self.registers.c, self.registers.b).wrapping_sub(1).swap_bytes();
                 self.registers.b = CPU::get_upper_byte(concat);
                 self.registers.c = concat as u8
             },
             RegistersEnum::de => {
-                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.e, self.registers.d) - 1);
+                let concat:u16 = Registers::concat_registers(self.registers.e, self.registers.d).wrapping_sub(1).swap_bytes();
                 self.registers.d = CPU::get_upper_byte(concat);
                 self.registers.e = concat as u8
             },
             RegistersEnum::hl => {
-                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.l, self.registers.h) - 1);
+                let concat:u16 = Registers::concat_registers(self.registers.l, self.registers.h).wrapping_sub(1).swap_bytes();
                 self.registers.h = CPU::get_upper_byte(concat);
                 self.registers.l = concat as u8
             }
@@ -172,7 +172,7 @@ impl CPU {
     // Increment 16 bit value
     // Endian-swapped, so upper byte is incremented
     pub fn inc_16bit(reg:u16) -> u16 {
-        CPU::swap_endian(CPU::swap_endian(reg).wrapping_add(1))
+        reg.swap_bytes().wrapping_add(1).swap_bytes()
     }
 
     // Increment combined 8 bit registers as a 16 bit one
@@ -180,17 +180,17 @@ impl CPU {
     pub fn inc_16bits(&mut self, reg:RegistersEnum) {
         match reg {
             RegistersEnum::bc => {
-                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.c, self.registers.b).wrapping_add(1));
+                let concat:u16 = Registers::concat_registers(self.registers.c, self.registers.b).wrapping_add(1).swap_bytes();
                 self.registers.b = CPU::get_upper_byte(concat);
                 self.registers.c = concat as u8
             },
             RegistersEnum::de => {
-                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.e, self.registers.d).wrapping_add(1));
+                let concat:u16 = Registers::concat_registers(self.registers.e, self.registers.d).wrapping_add(1).swap_bytes();
                 self.registers.d = CPU::get_upper_byte(concat);
                 self.registers.e = concat as u8
             },
             RegistersEnum::hl => {
-                let concat:u16 = CPU::swap_endian(Registers::concat_registers(self.registers.l, self.registers.h).wrapping_add(1));
+                let concat:u16 = Registers::concat_registers(self.registers.l, self.registers.h).wrapping_add(1).swap_bytes();
                 self.registers.h = CPU::get_upper_byte(concat);
                 self.registers.l = concat as u8
             }
@@ -200,19 +200,12 @@ impl CPU {
         }
     }
 
-    // Swap endianness of 16 bit word
-    // for memory access, mainly.
-    // For combined registers, use Registers::concat_registers(lower_byte, upper_byte)
-    pub fn swap_endian(word:u16) -> u16 {
-        (word >> 8) | (word << 8)
-    }
-
     // opcode = opcode found in first 256, opcode2 = opcode after CB, arg = literal value
     pub fn op_match(&mut self, memory:&mut MemMap, timer:&mut Timer, opcode:u8, opcode2:Option<u8>, arg:u16) {
         println!(" A: {:X}\n B: {:X}\n C: {:X}\n D: {:X}\n E: {:X}\n F: {:08b}\n H: {:X}\n L: {:X}", 
                 self.registers.a, self.registers.b, self.registers.c, self.registers.d, self.registers.e, self.registers.f, self.registers.h, self.registers.l);
-        println!(" pc:\t{:X}", CPU::swap_endian(self.registers.pc));
-        println!(" sp:\t{:X}", CPU::swap_endian(self.registers.sp));
+        println!(" pc:\t{:X}", self.registers.pc.swap_bytes());
+        println!(" sp:\t{:X}", self.registers.sp.swap_bytes());
         match opcode {
             0x00 => { // NOP
                 CPU::op_nop();
@@ -255,8 +248,8 @@ impl CPU {
                 self.registers.pc = CPU::inc_16bit(self.registers.pc)
             },
             0x08 => { // LD (a16),SP
-                memory.set_memory(timer, CPU::swap_endian(arg) as usize, self.registers.sp as u8);
-                memory.set_memory(timer, (CPU::swap_endian(arg) + 1) as usize, CPU::get_upper_byte(self.registers.sp));
+                memory.set_memory(timer, arg.swap_bytes() as usize, self.registers.sp as u8);
+                memory.set_memory(timer, arg.wrapping_add(1).swap_bytes() as usize, CPU::get_upper_byte(self.registers.sp));
                 timer.scanline_hz += 20;
                 self.registers.pc = CPU::inc_16bit(self.registers.pc)
             },
@@ -491,13 +484,13 @@ impl CPU {
             },
             0x34 => { // INC (HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get + 1);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get.wrapping_add(1));
                 timer.scanline_hz += 12;
                 self.registers.pc = CPU::inc_16bit(self.registers.pc)
             },
             0x35 => { // DEC (HL)
                 let get = memory.get_byte(Registers::concat_registers(self.registers.l, self.registers.h) as usize);
-                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get - 1);
+                memory.set_memory(timer, Registers::concat_registers(self.registers.l, self.registers.h) as usize, get.wrapping_sub(1));
                 timer.scanline_hz += 12;
                 self.registers.pc = CPU::inc_16bit(self.registers.pc)
             },
@@ -1393,7 +1386,7 @@ impl CPU {
                 timer.scanline_hz += 16
             }
             0xE0 => { // LDH (a8),A
-                memory.set_memory(timer, (0xFF00 + (arg as u8) as u16) as usize, self.registers.a);
+                memory.set_memory(timer, (0x00FFu16.wrapping_add((arg as u8) as u16)).swap_bytes() as usize, self.registers.a);
                 timer.scanline_hz += 12;
                 self.registers.pc = CPU::inc_16bit(self.registers.pc)
             },
@@ -1433,7 +1426,7 @@ impl CPU {
                 timer.scanline_hz += 4;
             },
             0xEA => { // LD (a16),A
-                memory.set_memory(timer, CPU::swap_endian(arg) as usize, self.registers.a);
+                memory.set_memory(timer, arg.swap_bytes() as usize, self.registers.a);
                 timer.scanline_hz += 16;
                 self.registers.pc = CPU::inc_16bit(self.registers.pc)
             },
@@ -1512,7 +1505,7 @@ impl CPU {
                 self.registers.pc = CPU::inc_16bit(self.registers.pc)
             },
             0xFA => { // LD A,(a16)
-                self.registers.a = CPU::op_load_8bit(memory.get_byte(CPU::swap_endian(arg) as usize));
+                self.registers.a = CPU::op_load_8bit(memory.get_byte(arg.swap_bytes() as usize));
                 timer.scanline_hz += 16;
                 self.registers.pc = CPU::inc_16bit(self.registers.pc)
             },
@@ -2896,11 +2889,11 @@ impl CPU {
 
     pub fn op_push(&mut self, timer:&mut Timer, memory:&mut MemMap, val:u8) {
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, val);
+        memory.set_memory(timer, self.registers.sp.swap_bytes() as usize, val);
     }
 
     pub fn op_pop(&mut self, memory:&mut MemMap) -> u8 {
-        let ret = memory.get_byte(CPU::swap_endian(self.registers.sp) as usize);
+        let ret = memory.get_byte(self.registers.sp.swap_bytes() as usize);
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
         ret
     }
@@ -3117,13 +3110,13 @@ impl CPU {
         match reg {
             RegistersEnum::hl => {
                 old_reg = Registers::concat_registers(self.registers.h, self.registers.l);
-                mod_reg = CPU::swap_endian(CPU::swap_endian(old_reg).wrapping_add(CPU::swap_endian(val)));
+                mod_reg = old_reg.swap_bytes().wrapping_add(val);
                 self.registers.h = CPU::get_upper_byte(mod_reg);
                 self.registers.l = mod_reg as u8;
             }
             RegistersEnum::sp => {
                 old_reg = self.registers.sp;
-                self.registers.sp = CPU::swap_endian(CPU::swap_endian(self.registers.sp).wrapping_add(CPU::swap_endian(val)));
+                self.registers.sp = self.registers.sp.swap_bytes().wrapping_add(val);
                 mod_reg = self.registers.sp;
                 self.registers.f &= !FLAG_ZERO;
             }
@@ -3282,7 +3275,7 @@ impl CPU {
             self.registers.f |= FLAG_CARR;
         }
 
-        let rot = (reg << bits) | (reg >> (8 - bits));
+        let rot = reg.rotate_left(bits as u32);
 
         self.registers.f &= !FLAG_SUBT;
         self.registers.f &= !FLAG_HALF;
@@ -3306,7 +3299,7 @@ impl CPU {
         };
 
         if (self.registers.f & FLAG_CARR) > 0 {
-            rot = (reg << bits) | (reg >> (8 - bits));
+            rot = reg.rotate_left(bits as u32);
         }
 
         self.registers.f |= carry_bit;
@@ -3330,7 +3323,7 @@ impl CPU {
             self.registers.f |= FLAG_CARR;
         }
 
-        let rot = (reg >> bits) | (reg << (8 - bits));
+        let rot = reg.rotate_right(bits as u32);
 
         self.registers.f &= !FLAG_SUBT;
         self.registers.f &= !FLAG_HALF;
@@ -3354,7 +3347,7 @@ impl CPU {
         };
 
         if (self.registers.f & FLAG_CARR) > 0 {
-            rot = (reg >> bits) | (reg << (8 - bits));
+            rot = reg.rotate_right(bits as u32);
         }
 
         self.registers.f |= carry_bit;
@@ -3540,9 +3533,9 @@ impl CPU {
 
     pub fn op_call(&mut self, timer:&mut Timer, memory:&mut MemMap) {
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, CPU::get_upper_byte(self.registers.pc));
+        memory.set_memory(timer, self.registers.sp.swap_bytes() as usize, CPU::get_upper_byte(self.registers.pc));
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
+        memory.set_memory(timer, self.registers.sp.swap_bytes() as usize, self.registers.pc as u8);
     }
 
     pub fn op_call_if(&mut self, timer:&mut Timer, memory:&mut MemMap, cond:JumpCondition) -> bool {
@@ -3573,23 +3566,23 @@ impl CPU {
 
         if call {
             self.registers.sp = CPU::dec_16bit(self.registers.sp);
-            memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, CPU::get_upper_byte(self.registers.pc));
+            memory.set_memory(timer, self.registers.sp.swap_bytes() as usize, CPU::get_upper_byte(self.registers.pc));
             self.registers.sp = CPU::dec_16bit(self.registers.sp);
-            memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
+            memory.set_memory(timer, self.registers.sp.swap_bytes() as usize, self.registers.pc as u8);
         }
         call
     }
 
     pub fn op_restart(&mut self, timer:&mut Timer, memory:&mut MemMap, offset:u8) {
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, CPU::get_upper_byte(self.registers.pc));
+        memory.set_memory(timer, self.registers.sp.swap_bytes() as usize, CPU::get_upper_byte(self.registers.pc));
         self.registers.sp = CPU::dec_16bit(self.registers.sp);
-        memory.set_memory(timer, CPU::swap_endian(self.registers.sp) as usize, self.registers.pc as u8);
+        memory.set_memory(timer, self.registers.sp.swap_bytes() as usize, self.registers.pc as u8);
         self.registers.pc = (offset as u16) << 8;
     }
 
     pub fn op_return(&mut self, memory:&mut MemMap) {
-        self.registers.pc = memory.get_word(CPU::swap_endian(self.registers.sp) as usize);
+        self.registers.pc = memory.get_word(self.registers.sp.swap_bytes() as usize);
         self.registers.sp = CPU::inc_16bit(self.registers.sp);
         self.registers.sp = CPU::inc_16bit(self.registers.sp);
     }
@@ -3621,7 +3614,7 @@ impl CPU {
         }
 
         if ret {
-            self.registers.pc = memory.get_word(CPU::swap_endian(self.registers.sp) as usize);
+            self.registers.pc = memory.get_word(self.registers.sp.swap_bytes() as usize);
             self.registers.sp = CPU::inc_16bit(self.registers.sp);
             self.registers.sp = CPU::inc_16bit(self.registers.sp);
         }
@@ -3629,7 +3622,7 @@ impl CPU {
     }
 
     pub fn op_return_ei(&mut self, timer:&mut Timer, memory:&mut MemMap) {
-        self.registers.pc = memory.get_word(CPU::swap_endian(self.registers.sp) as usize);
+        self.registers.pc = memory.get_word(self.registers.sp.swap_bytes() as usize);
         self.registers.sp = CPU::inc_16bit(self.registers.sp);
         self.registers.sp = CPU::inc_16bit(self.registers.sp);
         self.ime = true;

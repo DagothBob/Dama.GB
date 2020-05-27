@@ -150,7 +150,7 @@ impl MemMap {
     }
 
     // Memory addresses from the game code or registers
-    // needs to be endian-swapped for indexing
+    // needs to be big-endian for indexing
     pub fn set_memory(&mut self, timer:&mut Timer, addr:usize, val:u8) {
         println!(" Waddr: \t{:X} | {:X}", addr, val);
         // During DMA, CPU can only write to 0xFF80 - 0xFFFE
