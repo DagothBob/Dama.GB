@@ -1,10 +1,7 @@
 use std::mem::transmute;
 
-use crate::{gb_cpu::LR35902, gamepak::GamePak, aux_ram::AuxRAM};
+use crate::{gb_cpu::LR35902, gamepak::GamePak, aux_ram::AuxRAM, MERGE_U8, SPLIT_U16};
 use paste::paste;
-
-#[macro_use]
-mod utility;
 
 pub struct GB {
     ops: [OpCode; 0x100],
@@ -570,19 +567,25 @@ macro_rules! CALL_NX_A16 {
     ($flag:tt) => {
         paste! {
             fn [<call_n $flag _a16>](&mut self) {
-                let lo: u8 = self.read_pc_advance();
-                let hi: u8 = self.read_pc_advance();
+                let new_lo: u8 = self.read_pc_advance();
+                let new_hi: u8 = self.read_pc_advance();
         
                 if self.cpu.[<get_ $flag _flag>]() == 0 {
+                    let pc: u16 = self.cpu.get_pc();
+                    let old_lo: u8 = SPLIT_U16!(pc)[1];
+                    let old_hi: u8 = SPLIT_U16!(pc)[0];
+
                     self.advance_cycle();
         
                     self.cpu.decrement_sp();
                     let mut sp: u16 = self.cpu.get_sp();
-                    self.write_cycle(sp, hi);
+                    self.write_cycle(sp, old_hi);
         
                     self.cpu.decrement_sp();
                     sp = self.cpu.get_sp();
-                    self.write_cycle(sp, lo);
+                    self.write_cycle(sp, old_lo);
+
+                    self.cpu.set_pc(MERGE_U8!(new_hi, new_lo));
                 }
             }
         }
@@ -690,19 +693,25 @@ macro_rules! CALL_X_A16 {
     ($flag:tt) => {
         paste! {
             fn [<call_ $flag _a16>](&mut self) {
-                let lo: u8 = self.read_pc_advance();
-                let hi: u8 = self.read_pc_advance();
+                let new_lo: u8 = self.read_pc_advance();
+                let new_hi: u8 = self.read_pc_advance();
         
                 if self.cpu.[<get_ $flag _flag>]() != 0 {
+                    let pc: u16 = self.cpu.get_pc();
+                    let old_lo: u8 = SPLIT_U16!(pc)[1];
+                    let old_hi: u8 = SPLIT_U16!(pc)[0];
+
                     self.advance_cycle();
         
                     self.cpu.decrement_sp();
                     let mut sp: u16 = self.cpu.get_sp();
-                    self.write_cycle(sp, hi);
+                    self.write_cycle(sp, old_hi);
         
                     self.cpu.decrement_sp();
                     sp = self.cpu.get_sp();
-                    self.write_cycle(sp, lo);
+                    self.write_cycle(sp, old_lo);
+
+                    self.cpu.set_pc(MERGE_U8!(new_hi, new_lo));
                 }
             }
         }
@@ -1560,18 +1569,24 @@ impl GB {
 
     /// Call.
     fn call(&mut self) {
-        self.advance_cycle();
+        self.advance_cycle(); 
 
-        let lo: u8 = self.read_pc_advance();
-        let hi: u8 = self.read_pc_advance();
+        let new_lo: u8 = self.read_pc_advance();
+        let new_hi: u8 = self.read_pc_advance();
+
+        let pc: u16 = self.cpu.get_pc();
+        let old_lo: u8 = SPLIT_U16!(pc)[1];
+        let old_hi: u8 = SPLIT_U16!(pc)[0];
 
         self.cpu.decrement_sp();
         let mut sp: u16 = self.cpu.get_sp();
-        self.write_cycle(sp, hi);
+        self.write_cycle(sp, old_hi);
 
         self.cpu.decrement_sp();
         sp = self.cpu.get_sp();
-        self.write_cycle(sp, lo);
+        self.write_cycle(sp, old_lo);
+
+        self.cpu.set_pc(MERGE_U8!(new_hi, new_lo));
     }
 
     /// Add byte to A through carry.
@@ -2639,6 +2654,8 @@ impl GB {
 
 #[cfg(test)]
 mod tests {
+    use crate::gb_cpu::{FLAG_ZERO, FLAG_SUBT, FLAG_HALF, FLAG_CARR};
+
     use super::*;
 
     /// Test reading and writing memory.
@@ -2690,8 +2707,30 @@ mod tests {
         assert_eq!(gb.read_word_pc_advance(), 0x4110);
     }
 
+    /// Test CPU flags.
     #[test]
-    fn return_test() {
+    fn flags() {
+        let mut gb: GB = GB::init();
+
+        gb.cpu.set_f(0x0);
+        assert_eq!(gb.cpu.get_zero_flag(), 0x0);
+        assert_eq!(gb.cpu.get_subt_flag(), 0x0);
+        assert_eq!(gb.cpu.get_half_flag(), 0x0);
+        assert_eq!(gb.cpu.get_carr_flag(), 0x0);
+
+        gb.cpu.set_zero_flag();
+        assert_eq!(gb.cpu.get_zero_flag(), FLAG_ZERO);
+        gb.cpu.set_subt_flag();
+        assert_eq!(gb.cpu.get_subt_flag(), FLAG_SUBT);
+        gb.cpu.set_half_flag();
+        assert_eq!(gb.cpu.get_half_flag(), FLAG_HALF);
+        gb.cpu.set_carr_flag();
+        assert_eq!(gb.cpu.get_carr_flag(), FLAG_CARR);
+    }
+
+    /// Test return opcode.
+    #[test]
+    fn return_op() {
         let mut gb: GB = GB::init();
 
         gb.cpu.set_sp(0xA000);
@@ -2699,5 +2738,94 @@ mod tests {
         gb.ret();
         assert_eq!(gb.cpu.get_sp(), 0xA002);
         assert_eq!(gb.cpu.get_pc(), 0xFF11);
+    }
+
+    /// Test basic ADD instruction.
+    #[test]
+    fn add_op() {
+        let mut gb: GB = GB::init();
+
+        assert_eq!(gb.cpu.get_a(), 0x1);
+        gb.add_a_a();
+        assert_eq!(gb.cpu.get_a(), 0x2);
+    }
+
+    /// Testing rotating and shifting instructions.
+    #[test]
+    fn rotate_shift() {
+        let mut gb: GB = GB::init();
+
+        // SRA: Test normal SRA usage
+        gb.cpu.set_a(0b0000_0010);
+        gb.sra_a();
+        assert_eq!(gb.cpu.get_a(), 0b0000_0001);
+
+        // SRA: Test edge cases
+        gb.cpu.set_a(0b1000_0001);
+        gb.sra_a();
+        assert_eq!(gb.cpu.get_a(), 0b1100_0000);
+
+        // SRL: Test edge cases
+        gb.cpu.set_a(0b1000_0001);
+        gb.srl_a();
+        assert_eq!(gb.cpu.get_a(), 0b0100_0000);
+
+        // RR: Test
+        gb.cpu.set_a(0b0000_0001);
+        gb.rr_a();
+        assert_eq!(gb.cpu.get_a(), 0b1000_0000);
+
+        // RL: Test
+        gb.rl_a();
+        assert_eq!(gb.cpu.get_a(), 0b0000_0001);
+    }
+
+    /// Test basic BIT instruction.
+    #[test]
+    fn bit_op() {
+        let mut gb: GB = GB::init();
+
+        gb.cpu.reset_zero_flag();
+        gb.bit_0_a();
+        assert!(gb.cpu.get_zero_flag() == 0);
+    }
+
+    /// Test jumping to HL.
+    #[test]
+    fn jump_hl() {
+        let mut gb: GB = GB::init();
+
+        gb.cpu.set_hl(0xC000);
+        gb.jp_hlm();
+        assert_eq!(gb.cpu.get_pc(), 0xC000);
+    }
+
+    /// Test SWAP instruction.
+    #[test]
+    fn swap_op() {
+        let mut gb: GB = GB::init();
+
+        gb.cpu.set_a(0xF1);
+        gb.swap_a();
+        assert_eq!(gb.cpu.get_a(), 0x1F);
+    }
+
+    /// Test CALL instruction.
+    #[test]
+    fn call_op() {
+        let mut gb: GB = GB::init();
+
+        gb.write_word(0xC000, 0xD000);
+        gb.write_byte(0xC002, 0x69);
+        gb.cpu.set_pc(0xC000);
+        gb.call();
+        assert_eq!(gb.cpu.get_pc(), 0xD000);
+        
+        let sp: u16 = gb.cpu.get_sp();
+        assert_eq!(gb.read_byte(sp), 0x02);
+        assert_eq!(gb.read_byte(sp+1), 0xC0);
+
+        gb.ret();
+        assert_eq!(gb.cpu.get_pc(), 0xC002);
     }
 }

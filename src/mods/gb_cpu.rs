@@ -1,5 +1,3 @@
-#[macro_use] mod utility;
-
 pub const FLAG_ZERO:u8 = 0b1000_0000;
 pub const FLAG_SUBT:u8 = 0b0100_0000;
 pub const FLAG_HALF:u8 = 0b0010_0000;
@@ -428,10 +426,10 @@ impl Registers {
     /// Initializes registers to their observed initial state.
     fn init() -> Registers {
         Registers {
-            fa:MergedRegister{split: [0xB0, 0x01]},
-            cb:MergedRegister{split: [0x13, 0x00]},
-            ed:MergedRegister{split: [0xD8, 0x00]},
-            lh:MergedRegister{split: [0x4D, 0x01]},
+            fa:MergedRegister{split: [0x01, 0xB0]},
+            cb:MergedRegister{split: [0x00, 0x13]},
+            ed:MergedRegister{split: [0x00, 0xD8]},
+            lh:MergedRegister{split: [0x01, 0x4D]},
             sp:(0xFFFEu16).to_le(),
             pc:(0x0001u16).to_le()
         }
@@ -444,6 +442,8 @@ impl Registers {
 
 #[cfg(test)]
 mod tests {
+    use crate::MERGE_U8;
+
     use super::*;
 
     /// Test for MergedRegister union type.
@@ -472,14 +472,14 @@ mod tests {
         let mut cpu:LR35902 = LR35902::init();
 
         // Test init & combined getters //
-        assert_eq!(cpu.get_fa(), (0x01B0u16).to_le());
-        assert_eq!(cpu.get_af(), 0x01B0u16);
-        assert_eq!(cpu.get_cb(), (0x0013u16).to_le());
-        assert_eq!(cpu.get_bc(), 0x0013u16);
-        assert_eq!(cpu.get_ed(), (0x00D8u16).to_le());
-        assert_eq!(cpu.get_de(), 0x00D8u16);
-        assert_eq!(cpu.get_lh(), (0x014Du16).to_le());
-        assert_eq!(cpu.get_hl(), 0x014Du16);
+        assert_eq!(cpu.get_fa(), (0xB001u16).to_le());
+        assert_eq!(cpu.get_af(), 0xB001u16);
+        assert_eq!(cpu.get_cb(), (0x1300u16).to_le());
+        assert_eq!(cpu.get_bc(), 0x1300u16);
+        assert_eq!(cpu.get_ed(), (0xD800u16).to_le());
+        assert_eq!(cpu.get_de(), 0xD800u16);
+        assert_eq!(cpu.get_lh(), (0x4D01u16).to_le());
+        assert_eq!(cpu.get_hl(), 0x4D01u16);
         assert_eq!(cpu.get_sp_le(), (0xFFFEu16).to_le());
         assert_eq!(cpu.get_sp(), 0xFFFEu16);
         assert_eq!(cpu.get_pc_le(), (0x0001u16).to_le());

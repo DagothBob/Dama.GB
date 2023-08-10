@@ -2,11 +2,13 @@
 /// First arg is most significant, second arg is least.
 /// 
 /// Big Endian is superior. #MotorolaWasRobbed
+#[macro_export]
 macro_rules! MERGE_U8 {
     ($up:expr, $dn:expr) => (u16::from_be_bytes([$up, $dn]));
 }
 
 /// Split a u16 into bytes (big-endian order)
+#[macro_export]
 macro_rules! SPLIT_U16 {
     ($word:expr) => ($word.to_be_bytes());
 }
