@@ -2493,31 +2493,31 @@ impl GB {
                 return self.game.rom[addr as usize];
             },
             0x0100..=0x7FFF => { // User Program Area
-                return self.game.rom[(addr as usize) - 0x100];
+                return self.game.rom[addr as usize - 0x100];
             },
             0x8000..=0x9FFF => { // LCD Display RAM
-                return self.mem.disp_ram[(addr as usize) - 0x8000];
+                return self.mem.disp_ram[addr as usize - 0x8000];
             },
             0xA000..=0xBFFF => { // GamePak RAM
-                return self.game.ram[(addr as usize) - 0xA000];
+                return self.game.ram[addr as usize - 0xA000];
             },
             0xC000..=0xDFFF => { // Working RAM
-                return self.mem.work_ram[(addr as usize) - 0xC000];
+                return self.mem.work_ram[addr as usize - 0xC000];
             },
-            0xE000..=0xFDFF => { // Prohibited area
-                return 0x0;
+            0xE000..=0xFDFF => { // "Prohibited area" - Echoes $C000-$DDFF
+                return self.mem.work_ram[addr as usize - 0xE000];
             },
             0xFE00..=0xFEBF => { // OAM
-                return self.cpu.oam_ram[(addr as usize) - 0xFE00];
+                return self.cpu.oam_ram[addr as usize - 0xFE00];
             },
             0xFEA0..=0xFEFF => { // Unused CPU RAM
                 return 0x0;
             },
             0xFF00..=0xFF7F => { // Flags & Registers
-                return self.cpu.flags[(addr as usize) - 0xFF00];
+                return self.cpu.flags[addr as usize - 0xFF00];
             },
             0xFF80..=0xFFFE => { // CPU RAM
-                return self.cpu.ram[(addr as usize) - 0xFF80];
+                return self.cpu.ram[addr as usize - 0xFF80];
             },
             0xFFFF => { // IE
                 return self.cpu.ie;
@@ -2536,28 +2536,28 @@ impl GB {
                 // Do nothing
             },
             0x8000..=0x9FFF => { // LCD Display RAM
-                self.mem.disp_ram[(addr as usize) - 0x8000] = byte;
+                self.mem.disp_ram[addr as usize - 0x8000] = byte;
             },
             0xA000..=0xBFFF => { // GamePak RAM
-                self.game.ram[(addr as usize) - 0xA000] = byte;
+                self.game.ram[addr as usize - 0xA000] = byte;
             },
             0xC000..=0xDFFF => { // Working RAM
-                self.mem.work_ram[(addr as usize) - 0xC000] = byte;
+                self.mem.work_ram[addr as usize - 0xC000] = byte;
             },
-            0xE000..=0xFDFF => { // Prohibited area
-                // Do nothing?
+            0xE000..=0xFDFF => { // "Prohibited area" - Echoes $C000-$DDFF
+                self.mem.work_ram[addr as usize - 0xE000] = byte;
             },
             0xFE00..=0xFEBF => { // OAM
-                self.cpu.oam_ram[(addr as usize) - 0xFE00] = byte;
+                self.cpu.oam_ram[addr as usize - 0xFE00] = byte;
             },
             0xFEA0..=0xFEFF => { // Unused CPU RAM
                 // Do nothing?
             },
             0xFF00..=0xFF7F => { // Flags & Registers
-                self.cpu.flags[(addr as usize) - 0xFF00] = byte;
+                self.cpu.flags[addr as usize - 0xFF00] = byte;
             },
             0xFF80..=0xFFFE => { // CPU RAM
-                self.cpu.ram[(addr as usize) - 0xFF80] = byte;
+                self.cpu.ram[addr as usize - 0xFF80] = byte;
             },
             0xFFFF => { // IE
                 self.cpu.ie = byte;
