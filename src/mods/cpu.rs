@@ -100,7 +100,9 @@ pub struct LR35902 {
     pub flags: [u8; 0x7F],
     pub ram: [u8; 0x7F],
     pub ie: u8,
-    pub pending_cycles: usize
+    pub pending_cycles: usize,
+    pub stop: bool,
+    pub halt: bool
 }
 
 /// Registers are paired backwards due to little-endian
@@ -131,7 +133,9 @@ impl LR35902 {
             flags: [0; 0x7F],
             ram:[0; 0x7F],
             ie:0,
-            pending_cycles:0
+            pending_cycles:0,
+            stop:false,
+            halt:false
         };
 
         cpu.flags[0x10] = 0x80;

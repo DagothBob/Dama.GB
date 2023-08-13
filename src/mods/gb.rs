@@ -1,6 +1,6 @@
 use std::mem::transmute;
 
-use crate::{gb_cpu::LR35902, gamepak::GamePak, aux_ram::AuxRAM, MERGE_U8, SPLIT_U16};
+use crate::{cpu::LR35902, gamepak::GamePak, aux_ram::AuxRAM, MERGE_U8, SPLIT_U16};
 use paste::paste;
 
 pub struct GB {
@@ -2508,31 +2508,39 @@ impl GB {
                 return self.game.rom[addr as usize];
             },
             0x0100..=0x7FFF => { // User Program Area
-                return self.game.rom[addr as usize - 0x100];
+                let offset: usize = addr as usize - 0x100; 
+                return self.game.rom[offset];
             },
             0x8000..=0x9FFF => { // LCD Display RAM
-                return self.mem.disp_ram[addr as usize - 0x8000];
+                let offset: usize = addr as usize - 0x8000;
+                return self.mem.disp_ram[offset / 8].get_byte(offset % 16);
             },
             0xA000..=0xBFFF => { // GamePak RAM
-                return self.game.ram[addr as usize - 0xA000];
+                let offset: usize = addr as usize - 0xA000;
+                return self.game.ram[offset];
             },
             0xC000..=0xDFFF => { // Working RAM
-                return self.mem.work_ram[addr as usize - 0xC000];
+                let offset: usize = addr as usize - 0xC000;
+                return self.mem.work_ram[offset];
             },
             0xE000..=0xFDFF => { // "Prohibited area" - Echoes $C000-$DDFF
-                return self.mem.work_ram[addr as usize - 0xE000];
+                let offset: usize = addr as usize - 0xE000;
+                return self.mem.work_ram[offset];
             },
             0xFE00..=0xFEBF => { // OAM
-                return self.cpu.oam_ram[addr as usize - 0xFE00];
+                let offset: usize = addr as usize - 0xFE00;
+                return self.cpu.oam_ram[offset];
             },
             0xFEA0..=0xFEFF => { // Unused CPU RAM
                 return 0x0;
             },
             0xFF00..=0xFF7F => { // Flags & Registers
-                return self.cpu.flags[addr as usize - 0xFF00];
+                let offset: usize = addr as usize - 0xFF00;
+                return self.cpu.flags[offset];
             },
             0xFF80..=0xFFFE => { // CPU RAM
-                return self.cpu.ram[addr as usize - 0xFF80];
+                let offset: usize = addr as usize - 0xFF80;
+                return self.cpu.ram[offset];
             },
             0xFFFF => { // IE
                 return self.cpu.ie;
@@ -2551,28 +2559,35 @@ impl GB {
                 // Do nothing
             },
             0x8000..=0x9FFF => { // LCD Display RAM
-                self.mem.disp_ram[addr as usize - 0x8000] = byte;
+                let offset: usize = addr as usize - 0x8000; 
+                self.mem.disp_ram[offset / 8].set_byte(offset % 16, byte);
             },
             0xA000..=0xBFFF => { // GamePak RAM
-                self.game.ram[addr as usize - 0xA000] = byte;
+                let offset: usize = addr as usize - 0xA000;
+                self.game.ram[offset] = byte;
             },
             0xC000..=0xDFFF => { // Working RAM
-                self.mem.work_ram[addr as usize - 0xC000] = byte;
+                let offset: usize = addr as usize - 0xC000;
+                self.mem.work_ram[offset] = byte;
             },
             0xE000..=0xFDFF => { // "Prohibited area" - Echoes $C000-$DDFF
-                self.mem.work_ram[addr as usize - 0xE000] = byte;
+                let offset: usize = addr as usize - 0xE000;
+                self.mem.work_ram[offset] = byte;
             },
             0xFE00..=0xFEBF => { // OAM
-                self.cpu.oam_ram[addr as usize - 0xFE00] = byte;
+                let offset: usize = addr as usize - 0xFE00;
+                self.cpu.oam_ram[offset] = byte;
             },
             0xFEA0..=0xFEFF => { // Unused CPU RAM
                 // Do nothing?
             },
             0xFF00..=0xFF7F => { // Flags & Registers
-                self.cpu.flags[addr as usize - 0xFF00] = byte;
+                let offset: usize = addr as usize - 0xFF00;
+                self.cpu.flags[offset] = byte;
             },
             0xFF80..=0xFFFE => { // CPU RAM
-                self.cpu.ram[addr as usize - 0xFF80] = byte;
+                let offset: usize = addr as usize - 0xFF80;
+                self.cpu.ram[offset] = byte;
             },
             0xFFFF => { // IE
                 self.cpu.ie = byte;
@@ -2596,26 +2611,26 @@ impl GB {
         self.write_byte(addr+1, bytes[0]);
     }
 
-    /// Queue 4 CPU cycles.
+    /// Queue 4 timer cycles on CPU (1 CPU cycle).
     pub fn advance_cycle(&mut self) {
         self.cpu.pending_cycles = self.cpu.pending_cycles.saturating_add(4);
     } 
 
-    /// Read byte and advance CPU cycle by 4.
+    /// Read byte and advance CPU cycle once.
     pub fn read_cycle(&mut self, addr: u16) -> u8 {
         self.advance_cycle();
 
         return self.read_byte(addr);
     }
 
-    /// Write byte and advance CPU cycle by 4.
+    /// Write byte and advance CPU cycle once.
     pub fn write_cycle(&mut self, addr: u16, byte: u8) {
         self.advance_cycle();
 
         self.write_byte(addr, byte);
     }
 
-    /// Read word and advance CPU cycle by 8.
+    /// Read word and advance CPU cycle twice.
     pub fn read_word_cycle(&mut self, addr: u16) -> u16 {
         let high: u8 = self.read_cycle(addr+1);
         let low: u8 = self.read_cycle(addr);
@@ -2623,7 +2638,7 @@ impl GB {
         return MERGE_U8!(high, low);
     }
 
-    /// Write word and advance CPU cycle by 8.
+    /// Write word and advance CPU cycle twice.
     pub fn write_word_cycle(&mut self, addr: u16, word: u16) {
         let bytes: [u8; 2] = SPLIT_U16!(word);
 
@@ -2631,7 +2646,7 @@ impl GB {
         self.write_cycle(addr+1, bytes[0]);
     }
 
-    /// Read memory at PC, advance PC, then advance CPU cycle by 4.
+    /// Read memory at PC, advance PC, then advance CPU cycle once.
     pub fn read_pc_advance(&mut self) -> u8 {
         let pc: u16 = self.cpu.get_pc_advance();
 
@@ -2639,7 +2654,7 @@ impl GB {
     }
 
     /// Read word in native-endian starting at PC, 
-    /// advance PC twice, then advance CPU cycle by 8.
+    /// advance PC twice, then advance CPU cycle twice.
     pub fn read_word_pc_advance(&mut self) -> u16 {
         let first: u8 = self.read_pc_advance();
         let second: u8 = self.read_pc_advance();
@@ -2654,7 +2669,7 @@ impl GB {
 
 #[cfg(test)]
 mod tests {
-    use crate::gb_cpu::{FLAG_ZERO, FLAG_SUBT, FLAG_HALF, FLAG_CARR};
+    use crate::cpu::{FLAG_ZERO, FLAG_SUBT, FLAG_HALF, FLAG_CARR};
 
     use super::*;
 
