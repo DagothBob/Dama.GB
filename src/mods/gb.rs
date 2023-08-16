@@ -1,6 +1,6 @@
 use std::mem::transmute;
 
-use crate::{cpu::LR35902, gamepak::GamePak, aux_ram::AuxRAM, MERGE_U8, SPLIT_U16};
+use crate::{cpu::{LR35902, self}, gamepak::GamePak, aux_ram::AuxRAM, MERGE_U8, SPLIT_U16, graphics::PixelColour};
 use paste::paste;
 
 pub struct GB {
@@ -1178,7 +1178,7 @@ impl GB {
 
     /// Halt CPU & LCD display until button pressed.
     fn stop(&mut self) {
-        // TODO: Implement this
+        todo!()
     }
 
     /// Rotate A left.
@@ -1337,7 +1337,7 @@ impl GB {
 
     /// Halt CPU.
     fn halt(&mut self) {
-        // TODO: Implement this.
+        todo!()
     }
 
     /// Add value at memory address stored in HL to A.
@@ -1648,7 +1648,7 @@ impl GB {
 
         self.cpu.set_pc(MERGE_U8!(hi, lo));
 
-        // TODO: Implement interrupt enable.
+        todo!() // Implement interrupt enable
     }
 
     /// Subtract byte from A through carry.
@@ -1777,7 +1777,7 @@ impl GB {
 
     /// Disable interrupts.
     fn di(&mut self) {
-        // TODO: Implement this.
+        todo!()
     }
 
     /// "OR" byte with A.
@@ -1836,7 +1836,7 @@ impl GB {
 
     /// Enable interrupts.
     fn ei(&mut self) {
-        // TODO: Implement this.
+        todo!()
     }
 
     /// Compare byte with A, setting various flags.
@@ -2579,7 +2579,7 @@ impl GB {
                 self.cpu.oam_ram[offset] = byte;
             },
             0xFEA0..=0xFEFF => { // Unused CPU RAM
-                // Do nothing?
+                // Do nothing
             },
             0xFF00..=0xFF7F => { // Flags & Registers
                 let offset: usize = addr as usize - 0xFF00;
@@ -2661,6 +2661,42 @@ impl GB {
 
         return MERGE_U8!(second, first);
     }
+
+
+    /////////////////////
+    // Other functions //
+    /////////////////////
+    
+    /// Get the bgp/obp0/obp1 palette.
+    fn get_palette(&mut self, addr: u16) -> [PixelColour; 4] {
+        let bgp: u8 = self.read_byte(addr);
+        let mut palette: [PixelColour; 4] = [PixelColour::White; 4];
+
+        for i in 0..palette.len() {
+            palette[i] = match (bgp & (0b0000_0011 << (i * 2))) >> (i * 2) {
+                0x0 => PixelColour::White,
+                0x1 => PixelColour::Light,
+                0x2 => PixelColour::Dark,
+                0x3 => PixelColour::Black,
+                _ => unreachable!()
+            }
+        }
+
+        return palette;
+    }
+
+    fn get_background(&mut self) -> [u8; 69120] {
+        let palette: [PixelColour; 4] = self.get_palette(cpu::BGP);
+        let scy: u8 = self.read_byte(cpu::SCY);
+        let scx: u8 = self.read_byte(cpu::SCX);
+
+        todo!()
+    }
+    
+    pub fn get_current_lcd(&mut self) -> [u8; 69120] {
+        todo!()
+    }
+
 }
 
 ////////////////
@@ -2760,6 +2796,7 @@ mod tests {
     fn add_op() {
         let mut gb: GB = GB::init();
 
+        gb.cpu.set_a(0x1);
         assert_eq!(gb.cpu.get_a(), 0x1);
         gb.add_a_a();
         assert_eq!(gb.cpu.get_a(), 0x2);
@@ -2801,8 +2838,9 @@ mod tests {
         let mut gb: GB = GB::init();
 
         gb.cpu.reset_zero_flag();
+        gb.cpu.set_a(0b0000_0001);
         gb.bit_0_a();
-        assert!(gb.cpu.get_zero_flag() == 0);
+        assert_eq!(gb.cpu.get_zero_flag(), 0);
     }
 
     /// Test jumping to HL.

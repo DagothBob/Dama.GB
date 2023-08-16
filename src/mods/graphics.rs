@@ -14,6 +14,7 @@ pub struct Tile {
     lines: [LineBits; 8]
 }
 
+#[derive(Clone, Copy)]
 pub enum PixelColour {
     Black,
     Dark,

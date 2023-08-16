@@ -177,27 +177,28 @@ impl LR35902 {
 
     /// Get A register
     pub fn get_a(&self) -> u8 {
-        unsafe { self.cpu_registers.fa.split[0] }
+        unsafe { self.cpu_registers.fa.split[1] }
     }
 
     /// Get F register
     pub fn get_f(&self) -> u8 {
-        unsafe { self.cpu_registers.fa.split[1] }
+        unsafe { self.cpu_registers.fa.split[0] }
     }
 
     /// Set AF registers (value must be native-endian).
     pub fn set_af(&mut self, val:u16) {
         self.cpu_registers.fa.merged = val.to_le();
+        self.set_f(self.get_f() & 0b1111_0000); // Clear unused flags
     }
 
     /// Set A register.
     pub fn set_a(&mut self, val:u8) {
-        unsafe { self.cpu_registers.fa.split[0] = val; }
+        unsafe { self.cpu_registers.fa.split[1] = val; }
     }
 
-    /// Set F register.
+    /// Set F register (unused flags are always reset).
     pub fn set_f(&mut self, val:u8) {
-        unsafe { self.cpu_registers.fa.split[1] = val; }
+        unsafe { self.cpu_registers.fa.split[0] = val & 0b1111_0000; }
     }
 
     /// Get BC registers in little-endian format.
@@ -212,12 +213,12 @@ impl LR35902 {
 
     /// Get B register
     pub fn get_b(&self) -> u8 {
-        unsafe { self.cpu_registers.cb.split[0] }
+        unsafe { self.cpu_registers.cb.split[1] }
     }
 
     /// Get C register
     pub fn get_c(&self) -> u8 {
-        unsafe { self.cpu_registers.cb.split[1] }
+        unsafe { self.cpu_registers.cb.split[0] }
     }
 
     /// Set BC registers (value must be native-endian).
@@ -227,12 +228,12 @@ impl LR35902 {
 
     /// Set B register.
     pub fn set_b(&mut self, val:u8) {
-        unsafe { self.cpu_registers.cb.split[0] = val; }
+        unsafe { self.cpu_registers.cb.split[1] = val; }
     }
 
     /// Set C register.
     pub fn set_c(&mut self, val:u8) {
-        unsafe { self.cpu_registers.cb.split[1] = val; }
+        unsafe { self.cpu_registers.cb.split[0] = val; }
     }
 
     /// Get DE registers in little-endian format.
@@ -247,12 +248,12 @@ impl LR35902 {
 
     /// Get D register
     pub fn get_d(&self) -> u8 {
-        unsafe { self.cpu_registers.ed.split[0] }
+        unsafe { self.cpu_registers.ed.split[1] }
     }
 
     /// Get E register
     pub fn get_e(&self) -> u8 {
-        unsafe { self.cpu_registers.ed.split[1] }
+        unsafe { self.cpu_registers.ed.split[0] }
     }
 
     /// Set DE registers (value must be native-endian).
@@ -262,12 +263,12 @@ impl LR35902 {
 
     /// Set D register.
     pub fn set_d(&mut self, val:u8) {
-        unsafe { self.cpu_registers.ed.split[0] = val; }
+        unsafe { self.cpu_registers.ed.split[1] = val; }
     }
 
     /// Set E register.
     pub fn set_e(&mut self, val:u8) {
-        unsafe { self.cpu_registers.ed.split[1] = val; }
+        unsafe { self.cpu_registers.ed.split[0] = val; }
     }
 
     /// Get HL registers in little-endian format.
@@ -282,12 +283,12 @@ impl LR35902 {
 
     /// Get H register
     pub fn get_h(&self) -> u8 {
-        unsafe { self.cpu_registers.lh.split[0] }
+        unsafe { self.cpu_registers.lh.split[1] }
     }
 
     /// Get L register
     pub fn get_l(&self) -> u8 {
-        unsafe { self.cpu_registers.lh.split[1] }
+        unsafe { self.cpu_registers.lh.split[0] }
     }
 
     /// Set HL registers (value must be native-endian).
@@ -297,12 +298,12 @@ impl LR35902 {
 
     /// Set H register.
     pub fn set_h(&mut self, val:u8) {
-        unsafe { self.cpu_registers.lh.split[0] = val; }
+        unsafe { self.cpu_registers.lh.split[1] = val; }
     }
 
     /// Set L register.
     pub fn set_l(&mut self, val:u8) {
-        unsafe { self.cpu_registers.lh.split[1] = val; }
+        unsafe { self.cpu_registers.lh.split[0] = val; }
     }
 
     /// Get SP register in little-endian format.
@@ -435,7 +436,7 @@ impl Registers {
             ed:MergedRegister{split: [0x00, 0xD8]},
             lh:MergedRegister{split: [0x01, 0x4D]},
             sp:(0xFFFEu16).to_le(),
-            pc:(0x0001u16).to_le()
+            pc:(0x0100u16).to_le()
         }
     }
 }
@@ -486,16 +487,16 @@ mod tests {
         assert_eq!(cpu.get_hl(), 0x4D01u16);
         assert_eq!(cpu.get_sp_le(), (0xFFFEu16).to_le());
         assert_eq!(cpu.get_sp(), 0xFFFEu16);
-        assert_eq!(cpu.get_pc_le(), (0x0001u16).to_le());
-        assert_eq!(cpu.get_pc(), 0x0001u16);
+        assert_eq!(cpu.get_pc_le(), (0x0100u16).to_le());
+        assert_eq!(cpu.get_pc(), 0x0100u16);
 
         // Test individual setters & getters //
         cpu.set_af(0xDEADu16);
-        assert_eq!(cpu.get_af(), 0xDEADu16);
+        assert_eq!(cpu.get_af(), 0xDEADu16 & 0b1111_1111_1111_0000);
         cpu.set_a(0x13u8);
         assert_eq!(cpu.get_a(), 0x13u8);
         cpu.set_f(0x13u8);
-        assert_eq!(cpu.get_f(), 0x13u8);
+        assert_eq!(cpu.get_f(), 0x13u8 & 0b1111_0000);
 
         cpu.set_bc(0xDEADu16);
         assert_eq!(cpu.get_bc(), 0xDEADu16);
@@ -530,7 +531,22 @@ mod tests {
         let mut cpu:LR35902 = LR35902::init();
         let pc: u16 = cpu.get_pc_advance();
 
-        assert_eq!(pc, 0x0001u16);
-        assert_eq!(cpu.get_pc(), 0x0002u16);
+        assert_eq!(pc, 0x0100u16);
+        assert_eq!(cpu.get_pc(), 0x0101u16);
+    }
+
+    #[test]
+    fn flags() {
+        let mut cpu:LR35902 = LR35902::init();
+
+        cpu.set_f(0x0);
+        cpu.set_zero_flag();
+        assert_eq!(cpu.get_zero_flag(), FLAG_ZERO);
+        cpu.set_subt_flag();
+        assert_eq!(cpu.get_subt_flag(), FLAG_SUBT);
+        cpu.set_half_flag();
+        assert_eq!(cpu.get_half_flag(), FLAG_HALF);
+        cpu.set_carr_flag();
+        assert_eq!(cpu.get_carr_flag(), FLAG_CARR);
     }
 }
